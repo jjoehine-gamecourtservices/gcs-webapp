@@ -1,0 +1,23 @@
+services:
+  web:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile.dev
+    working_dir: /app
+    volumes:
+      - ../frontend:/app
+      - /app/node_modules
+    command: npm run dev -- --host 0.0.0.0 --port 5173
+    expose:
+      - "5173"
+    environment:
+      - CHOKIDAR_USEPOLLING=true
+
+  caddy:
+    volumes:
+      - ./caddy/Caddyfile.dev:/etc/caddy/Caddyfile:ro
+    ports:
+      - "80:80"
+    depends_on:
+      - web
+      - api

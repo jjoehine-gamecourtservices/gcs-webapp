@@ -1,0 +1,19 @@
+services:
+  api:
+    build:
+      context: ../backend 
+
+  web:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
+
+  caddy:
+    image: caddy:2
+    depends_on:
+      - api
+      - web
+    ports:
+      - "80:80"
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
