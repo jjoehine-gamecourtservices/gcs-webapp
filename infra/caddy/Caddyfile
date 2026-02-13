@@ -1,4 +1,20 @@
-:80 {
+http://gcs.local:80 {
+  @health path /health
+  handle @health {
+    respond "ok" 200
+  }
+
+  redir https://gcs.local{uri} 308
+}
+
+https://gcs.local:443 {
+  tls internal
+
+  @health path /health
+  handle @health {
+    respond "ok" 200
+  }
+
   handle_path /api/* {
     reverse_proxy api:8000
   }

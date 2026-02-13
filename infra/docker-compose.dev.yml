@@ -1,4 +1,8 @@
 services:
+  api:
+    build:
+      context: ../backend
+
   web:
     build:
       context: ../frontend

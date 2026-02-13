@@ -1,15 +1,15 @@
 services:
   api:
-    build:
-      context: ../backend 
+    image: gcs/api:local
+    restart: unless-stopped
 
   web:
-    build:
-      context: ../frontend
-      dockerfile: Dockerfile
+    image: gcs/web:local
+    restart: unless-stopped
 
   caddy:
     image: caddy:2
+    restart: unless-stopped
     depends_on:
       - api
       - web

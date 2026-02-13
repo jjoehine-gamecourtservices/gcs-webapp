@@ -1,0 +1,58 @@
+services:
+  api:
+    image: gamecourt/gcs-api:${GCS_VERSION:-0.1.2}
+    restart: unless-stopped
+    expose:
+      - "8000"
+    healthcheck:
+      # api image has Python but no curl/wget; use stdlib HTTP client
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import sys, urllib.request; url='http://127.0.0.1:8000/health'; (urllib.request.urlopen(url, timeout=2).read() and sys.exit(0))",
+        ]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+      start_period: 15s
+
+  web:
+    image: gamecourt/gcs-web:${GCS_VERSION:-0.1.2}
+    restart: unless-stopped
+    expose:
+      - "80"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1/"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+      start_period: 10s
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      api:
+        condition: service_healthy
+      web:
+        condition: service_healthy
+    healthcheck:
+      # Probe Caddy's admin API (local-only). Avoids HTTP->HTTPS redirects and any app-specific routes.
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:2019/config/"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+      start_period: 5s
+
+volumes:
+  caddy_data:
+  caddy_config:
