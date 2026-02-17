@@ -1,17 +1,19 @@
 services:
   api:
-    image: gamecourt/gcs-api:${GCS_VERSION:-0.1.2}
+    image: gamecourt/gcs-api:${GCS_VERSION:?GCS_VERSION is required}
     restart: unless-stopped
     expose:
       - "8000"
+    volumes:
+      - api_data:/data
     healthcheck:
-      # api image has Python but no curl/wget; use stdlib HTTP client
+      # api image has Python; stdlib HTTP probe. No host-shell quoting involved.
       test:
         [
           "CMD",
           "python",
           "-c",
-          "import sys, urllib.request; url='http://127.0.0.1:8000/health'; (urllib.request.urlopen(url, timeout=2).read() and sys.exit(0))",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2).read()",
         ]
       interval: 10s
       timeout: 3s
@@ -19,12 +21,13 @@ services:
       start_period: 15s
 
   web:
-    image: gamecourt/gcs-web:${GCS_VERSION:-0.1.2}
+    image: gamecourt/gcs-web:${GCS_VERSION:?GCS_VERSION is required}
     restart: unless-stopped
     expose:
       - "80"
     healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://127.0.0.1/"]
+      # Deterministic: curl exists in the web image (verified).
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/"]
       interval: 10s
       timeout: 3s
       retries: 6
@@ -46,13 +49,14 @@ services:
       web:
         condition: service_healthy
     healthcheck:
-      # Probe Caddy's admin API (local-only). Avoids HTTP->HTTPS redirects and any app-specific routes.
-      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:2019/config/"]
+      # Deterministic: curl exists in caddy image (verified). Probe local admin API.
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:2019/config/"]
       interval: 10s
       timeout: 3s
       retries: 6
       start_period: 5s
 
 volumes:
+  api_data:
   caddy_data:
   caddy_config:

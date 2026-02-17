@@ -1,10 +1,10 @@
 services:
   api:
-    image: gcs/api:local
+    image: gamecourt/gcs-api:local
     restart: unless-stopped
 
   web:
-    image: gcs/web:local
+    image: gamecourt/gcs-web:local
     restart: unless-stopped
 
   caddy:

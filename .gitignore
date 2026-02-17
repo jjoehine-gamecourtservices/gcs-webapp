@@ -14,3 +14,10 @@ dist/
 
 # Docker
 *.log
+
+# Local infra artifacts
+infra/.env
+infra/_prod_up_out.txt
+infra/_resolved_prod.yml
+infra/backups/
+infra/caddy-root.crt
