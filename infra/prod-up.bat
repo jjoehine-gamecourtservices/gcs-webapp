@@ -1,292 +1,265 @@
 @echo off
-setlocal EnableExtensions DisableDelayedExpansion
+setlocal EnableExtensions EnableDelayedExpansion
 
-REM --- Prod bring-up (image-only, version required) ---
-REM Usage:
-REM   prod-up.bat 0.1.0
-REM   prod-up.bat                    (reads .env.prod if present)
-REM   set GCS_VERSION=0.1.0 && prod-up.bat
-REM
-REM Deterministic commands:
-REM   prod-up.bat ps
-REM   prod-up.bat logs caddy --tail 120
-REM   prod-up.bat restart caddy
-REM   prod-up.bat exec api <command...>
-REM   prod-up.bat config
-REM   prod-up.bat health
+REM ============================================================
+REM prod-up.bat — hardened PROD entrypoint (Windows / Docker Desktop)
+REM Guarantees:
+REM   - ALWAYS uses: --env-file .env.prod
+REM   - ALWAYS uses: -p gcs_prod -f docker-compose.yml -f docker-compose.prod.yml
+REM   - Fails fast if .env.prod missing
+REM   - No silent fallbacks / no version drift (version arg must match .env.prod)
+REM   - exec uses -T
+REM   - pyc pipes stdin into python -
+REM   - Exit codes propagate
+REM ============================================================
 
-cd /d "%~dp0"
+echo [prod-up] START cwd="%CD%" arg1="%~1"
+
+REM Move to script directory (infra/)
+set "HERE=%~dp0"
+cd /d "%HERE%" || goto :fatal
 
 set "PROJECT=gcs_prod"
-set "ENV_FILE=.env.prod"
-set "BASE_COMPOSE=docker-compose.yml"
-set "PROD_COMPOSE=docker-compose.prod.yml"
+set "ENV_FILE=%HERE%.env.prod"
 
-if not exist "%BASE_COMPOSE%" (
-  echo ERROR: Missing %BASE_COMPOSE% in %CD%
-  exit /b 1
-)
-if not exist "%PROD_COMPOSE%" (
-  echo ERROR: Missing %PROD_COMPOSE% in %CD%
-  exit /b 1
+REM Fail fast if env file is missing
+if not exist "%ENV_FILE%" (
+  echo [prod-up] ERROR: missing required env file: "%ENV_FILE%"
+  exit /b 10
 )
 
-if /i "%~1"=="help"   goto :help
-if /i "%~1"=="/?"     goto :help
-if /i "%~1"=="-h"     goto :help
-if /i "%~1"=="--help" goto :help
+REM Compose base (ALWAYS uses env-file + project + both compose files)
+set "DC=docker compose --env-file ""%ENV_FILE%"" -p %PROJECT% -f docker-compose.yml -f docker-compose.prod.yml"
 
-REM --------------------------
-REM Determine whether %1 is a compose verb (CMD) or a version (UP)
-REM --------------------------
-set "ARG1=%~1"
-set "MODE=UP"
+REM ---- Read GCS_VERSION from .env.prod (PowerShell, no nested quotes) ----
+REM Pass ENV_FILE through environment to avoid CMD quoting traps.
+set "ENV_GCS_VERSION="
+for /f "tokens=1,* delims==" %%A in ('findstr /b /c:"GCS_VERSION=" "%ENV_FILE%"') do set "ENV_GCS_VERSION=%%B"
 
-if /i "%ARG1%"=="up"      set "MODE=CMD"
-if /i "%ARG1%"=="down"    set "MODE=CMD"
-if /i "%ARG1%"=="restart" set "MODE=CMD"
-if /i "%ARG1%"=="stop"    set "MODE=CMD"
-if /i "%ARG1%"=="start"   set "MODE=CMD"
-if /i "%ARG1%"=="ps"      set "MODE=CMD"
-if /i "%ARG1%"=="logs"    set "MODE=CMD"
-if /i "%ARG1%"=="config"  set "MODE=CMD"
-if /i "%ARG1%"=="exec"    set "MODE=CMD"
-if /i "%ARG1%"=="health"  set "MODE=CMD"
+if not defined ENV_GCS_VERSION (
+  echo [prod-up] ERROR: GCS_VERSION is missing in "%ENV_FILE%"
+  exit /b 11
+)
 
-REM --------------------------
-REM Resolve VERSION (strict)
-REM --------------------------
-set "VERSION="
+set "ENV_GCS_VERSION=%ENV_GCS_VERSION:"=%"
+set "ENV_GCS_VERSION=%ENV_GCS_VERSION:'=%"
 
-REM In UP mode, first arg may be the version
-if /i "%MODE%"=="UP" set "VERSION=%~1"
+REM Verb dispatch
+if /I "%~1"=="up"      goto :cmd_up
+if /I "%~1"=="down"    goto :cmd_down
+if /I "%~1"=="ps"      goto :cmd_ps
+if /I "%~1"=="logs"    goto :cmd_logs
+if /I "%~1"=="restart" goto :cmd_restart
+if /I "%~1"=="exec"    goto :cmd_exec
+if /I "%~1"=="pyc"     goto :cmd_pyc
+if /I "%~1"=="config"  goto :cmd_config
 
-REM If no CLI version, try .env.prod
-if "%VERSION%"=="" (
-  if exist "%ENV_FILE%" (
-    for /f "usebackq tokens=1,* delims==" %%A in ("%ENV_FILE%") do (
-      if /i "%%A"=="GCS_VERSION" set "VERSION=%%B"
-    )
+REM Default: treat first arg as version (legacy surface)
+set "REQ_VERSION=%~1"
+goto :do_up
+
+:cmd_up
+set "REQ_VERSION=%~2"
+goto :do_up
+
+:do_up
+REM If caller omitted a version for "up", use env version.
+if "%REQ_VERSION%"=="" set "REQ_VERSION=!ENV_GCS_VERSION!"
+
+REM Drift prevention: caller version must match .env.prod version
+if /I not "%REQ_VERSION%"=="!ENV_GCS_VERSION!" (
+  echo [prod-up] ERROR: version mismatch. Refusing to run.
+  echo [prod-up]        .env.prod GCS_VERSION = "!ENV_GCS_VERSION!"
+  echo [prod-up]        requested version     = "%REQ_VERSION%"
+  exit /b 12
+)
+
+echo [prod-up] Bringing up PROD (%PROJECT%) version "!ENV_GCS_VERSION!" using "%ENV_FILE%"
+
+%DC% up -d || goto :compose_fail
+
+echo.
+echo [prod-up] Checking for existing database to back up
+
+REM Ensure host backup directory exists (alongside this script)
+if not exist "%HERE%backups" mkdir "%HERE%backups"
+
+REM If DB exists inside container, copy it to host before migrations
+%DC% exec -T api sh -c "test -f /data/gcs.db"
+if errorlevel 1 (
+  echo [prod-up] No existing database found. Skipping backup.
+) else (
+  for /f %%T in ('powershell -NoProfile -Command "Get-Date -Format yyyyMMdd_HHmmss"') do set "TS=%%T"
+  set "BACKUP_FILE=%HERE%backups\gcs_!TS!.db"
+  echo [prod-up] Backing up database to "!BACKUP_FILE!"
+  %DC% cp api:/data/gcs.db "!BACKUP_FILE!"
+  if errorlevel 1 (
+    echo.
+    echo [prod-up] ERROR: Failed to create database backup. Aborting deployment.
+    exit /b 5
   )
 )
 
-REM If still empty, fall back to env var
-if "%VERSION%"=="" set "VERSION=%GCS_VERSION%"
+echo.
+echo [prod-up] Running Alembic upgrade (auto-enforced)
 
-REM Trim whitespace (spaces + tabs)
-for /f "tokens=* delims= " %%V in ("%VERSION%") do set "VERSION=%%V"
-for /f "tokens=* delims=        " %%V in ("%VERSION%") do set "VERSION=%%V"
-
-if "%VERSION%"=="" (
-  echo ERROR: GCS_VERSION not set.
-  echo Provide a version:
-  echo   prod-up.bat 0.1.0
-  echo Or create %ENV_FILE% with:
-  echo   GCS_VERSION=0.1.0
-  exit /b 1
-)
-
-set "GCS_VERSION=%VERSION%"
-
-REM --------------------------
-REM Compose options (deterministic env injection)
-REM --------------------------
-set "DC_OPTS=-p %PROJECT% -f %BASE_COMPOSE% -f %PROD_COMPOSE%"
-if exist "%ENV_FILE%" set "DC_OPTS=--env-file %ENV_FILE% -p %PROJECT% -f %BASE_COMPOSE% -f %PROD_COMPOSE%"
-
-REM Preflight: MUST evaluate prod override (fails if GCS_VERSION missing)
-docker compose %DC_OPTS% config >nul
+%DC% exec -T api alembic upgrade head
 if errorlevel 1 (
-  echo ERROR: docker compose config failed. Check GCS_VERSION and compose files.
-  exit /b 1
+  echo.
+  echo [prod-up] ERROR: Alembic upgrade failed. Aborting deployment.
+  exit /b 3
 )
 
-if /i "%MODE%"=="CMD" goto :dispatch
+echo.
+echo [prod-up] Waiting for API health (timeout 60s)
 
-REM =========================
-REM Bring-up mode (original behavior)
-REM =========================
+set /a WAIT_SECONDS=60
+set /a ELAPSED=0
 
-echo === Bringing up PROD (%PROJECT%) with version %GCS_VERSION% ===
+:health_loop
+for /f %%H in ('docker inspect %PROJECT%-api-1 --format "{{.State.Health.Status}}" 2^>NUL') do set "STATUS=%%H"
 
-docker image inspect "gcs/api:%GCS_VERSION%" >nul 2>nul
-if errorlevel 1 goto :missing_api
-echo Found image: gcs/api:%GCS_VERSION%
+if /I "!STATUS!"=="healthy" goto :health_ok
 
-docker image inspect "gcs/web:%GCS_VERSION%" >nul 2>nul
-if errorlevel 1 goto :missing_web
-echo Found image: gcs/web:%GCS_VERSION%
+timeout /t 2 >nul
+set /a ELAPSED+=2
 
-docker image inspect "caddy:2" >nul 2>nul
-if errorlevel 1 goto :missing_caddy
-echo Found image: caddy:2
-
-docker compose %DC_OPTS% up -d --remove-orphans
-if errorlevel 1 (
-  echo ERROR: docker compose up failed.
-  exit /b 1
+if !ELAPSED! GEQ !WAIT_SECONDS! (
+  echo.
+  echo [prod-up] ERROR: API did not become healthy within !WAIT_SECONDS! seconds.
+  exit /b 4
 )
 
-echo(
-echo === PROD status ===
-docker compose %DC_OPTS% ps
+goto :health_loop
 
-echo(
-echo === Verifying restart policy (must be unless-stopped) ===
+:health_ok
+echo [prod-up] API is healthy.
 
-call :assert_restart_policy api
-if errorlevel 1 exit /b 1
-
-call :assert_restart_policy web
-if errorlevel 1 exit /b 1
-
-call :assert_restart_policy caddy
-if errorlevel 1 exit /b 1
-
-echo OK: restart policy verified for api, web, caddy.
-
-endlocal
+echo.
+echo [prod-up] PROD status
+%DC% ps
 exit /b 0
 
+:cmd_down
+%DC% down
+exit /b %ERRORLEVEL%
 
-:dispatch
-if /i "%ARG1%"=="health" goto :health
-
-set "VERB=%ARG1%"
-
-REM --- THE ONLY SHIFT IN THE ENTIRE FILE ---
-shift
-
-REM IMPORTANT:
-REM - SHIFT updates %1..%9 but NOT %*
-REM - So we forward ONLY numbered args.
-
-if /i "%VERB%"=="config" goto :cmd_config
-if /i "%VERB%"=="exec"   goto :cmd_exec
-
-docker compose %DC_OPTS% %VERB% %1 %2 %3 %4 %5 %6 %7 %8 %9
-exit /b %errorlevel%
+:cmd_ps
+%DC% ps
+exit /b %ERRORLEVEL%
 
 :cmd_config
-docker compose %DC_OPTS% config
-exit /b %errorlevel%
+%DC% config
+exit /b %ERRORLEVEL%
+
+:cmd_logs
+shift
+if "%~1"=="" goto :usage
+set "SVC=%~1"
+shift
+
+set "TAIL="
+:logs_tail_loop
+if "%~1"=="" goto :logs_tail_done
+set "TAIL=!TAIL! %~1"
+shift
+goto :logs_tail_loop
+:logs_tail_done
+if defined TAIL set "TAIL=!TAIL:~1!"
+
+%DC% logs %SVC% %TAIL%
+exit /b %ERRORLEVEL%
+
+:cmd_restart
+shift
+if "%~1"=="" goto :usage
+set "SVC=%~1"
+shift
+
+set "TAIL="
+:restart_tail_loop
+if "%~1"=="" goto :restart_tail_done
+set "TAIL=!TAIL! %~1"
+shift
+goto :restart_tail_loop
+:restart_tail_done
+if defined TAIL set "TAIL=!TAIL:~1!"
+
+%DC% restart %SVC% %TAIL%
+exit /b %ERRORLEVEL%
 
 :cmd_exec
-docker compose %DC_OPTS% exec %1 %2 %3 %4 %5 %6 %7 %8 %9
-exit /b %errorlevel%
-
-
-:health
-echo(
-echo === PROD health (project: %PROJECT%, version: %GCS_VERSION%) ===
-
-echo(
-echo --- Containers ---
-docker compose %DC_OPTS% ps
-if errorlevel 1 goto :health_compose_fail
-
-where curl >nul 2>nul
-if errorlevel 1 goto :health_no_curl
-
-echo(
-echo --- HTTPS web (must return 200) ---
-REM Windows curl uses Schannel; internal CA often triggers revocation-check failures.
-REM For this internal LAN endpoint, we explicitly disable revocation check for curl only.
-for /f "usebackq delims=" %%S in (`curl --ssl-no-revoke -sS -o nul -w "%%{http_code}" https://gcs.local/`) do set "WEB_CODE=%%S"
-echo https://gcs.local/ -> %WEB_CODE%
-if not "%WEB_CODE%"=="200" goto :health_https_web_fail
-
-echo(
-echo --- HTTPS API through proxy (must return 200) ---
-for /f "usebackq delims=" %%S in (`curl --ssl-no-revoke -sS -o nul -w "%%{http_code}" https://gcs.local/api/health`) do set "API_CODE=%%S"
-echo https://gcs.local/api/health -> %API_CODE%
-if not "%API_CODE%"=="200" goto :health_https_api_fail
-
-echo(
-echo OK: health checks passed.
-exit /b 0
-
-:health_compose_fail
-echo ERROR: compose ps failed.
-exit /b 1
-
-:health_no_curl
-echo ERROR: curl not found on PATH.
-exit /b 1
-
-:health_https_web_fail
-echo(
-echo ERROR: HTTPS web check failed. Expected 200 from https://gcs.local/
-exit /b 1
-
-:health_https_api_fail
-echo(
-echo ERROR: HTTPS API check failed. Expected 200 from https://gcs.local/api/health
-exit /b 1
-
-
-:assert_restart_policy
-setlocal EnableDelayedExpansion
+shift
+if "%~1"=="" goto :usage
 set "SVC=%~1"
-set "CID="
-set "RP="
+shift
+if "%~1"=="" goto :usage
 
-for /f "usebackq delims=" %%I in (`docker compose %DC_OPTS% ps -q %SVC%`) do set "CID=%%I"
-
-if "!CID!"=="" (
-  echo ERROR: Could not find container ID for service "%SVC%". Is it running?
-  endlocal & exit /b 1
+REM Guardrail: python -c is NOT reliable via CMD quoting.
+REM Force users to use pyc for embedded code.
+if /I "%~1"=="python" (
+  if /I "%~2"=="-c" (
+    echo [prod-up] ERROR: python -c is not supported via exec on Windows CMD.
+    echo [prod-up]        Use: prod-up.bat pyc %SVC% "^<python code^>" [args...]
+    exit /b 2
+  )
 )
 
-for /f "usebackq delims=" %%R in (`docker inspect -f "{{.HostConfig.RestartPolicy.Name}}" !CID!`) do set "RP=%%R"
+set "TAIL="
+:exec_tail_loop
+if "%~1"=="" goto :exec_tail_done
+set "TAIL=!TAIL! %~1"
+shift
+goto :exec_tail_loop
+:exec_tail_done
+if defined TAIL set "TAIL=!TAIL:~1!"
 
-echo %SVC%: reported restart policy = "!RP!"
+REM exec is non-interactive by default (CI-safe)
+%DC% exec -T %SVC% %TAIL%
+exit /b %ERRORLEVEL%
 
-if /i "!RP!"=="unless-stopped" (
-  endlocal & exit /b 0
-)
+:cmd_pyc
+REM prod-up.bat pyc <service> "<python code>" [args...]
+shift
+if "%~1"=="" goto :usage
+set "SVC=%~1"
+shift
+if "%~1"=="" goto :usage
 
-echo ERROR: Service "%SVC%" restart policy is NOT "unless-stopped".
-echo Fix: Ensure docker-compose.prod.yml includes:
-echo   services:
-echo     %SVC%:
-echo       restart: unless-stopped
-echo Debug:
-docker inspect -f "{{.Name}} -> {{json .HostConfig.RestartPolicy}}" !CID!
-endlocal & exit /b 1
+set "PYC_CODE=%~1"
+shift
 
+set "TAIL="
+:pyc_tail_loop
+if "%~1"=="" goto :pyc_tail_done
+set "TAIL=!TAIL! %~1"
+shift
+goto :pyc_tail_loop
+:pyc_tail_done
+if defined TAIL set "TAIL=!TAIL:~1!"
 
-:missing_api
-echo ERROR: Required image not found locally: gcs/api:%GCS_VERSION%
-echo This prod deploy is image-only. Build/tag it first (release.bat / prod-release.bat).
+REM Pipe code via stdin to python - using PowerShell argument-safe invocation
+REM (no CMD quoting of docker compose args)
+powershell -NoProfile -Command "$ErrorActionPreference='Stop'; $code=$env:PYC_CODE; if([string]::IsNullOrEmpty($code)){ exit 2 }; $envFile=$env:ENV_FILE; $null = $code | & docker compose --env-file $envFile -p '%PROJECT%' -f docker-compose.yml -f docker-compose.prod.yml exec -T '%SVC%' python - %TAIL%; exit $LASTEXITCODE"
+exit /b %ERRORLEVEL%
+
+:compose_fail
+echo [prod-up] ERROR: docker compose failed
 exit /b 1
 
-:missing_web
-echo ERROR: Required image not found locally: gcs/web:%GCS_VERSION%
-echo This prod deploy is image-only. Build/tag it first (release.bat / prod-release.bat).
-exit /b 1
-
-:missing_caddy
-echo ERROR: Required image not found locally: caddy:2
-echo Pull it once with:
-echo   docker pull caddy:2
-exit /b 1
-
-
-:help
-echo(
-echo PROD ENTRYPOINT
-echo(
-echo Bring up prod:
-echo   prod-up.bat 0.1.0
-echo   prod-up.bat
-echo(
-echo Deterministic commands:
+:usage
+echo Usage:
+echo   prod-up.bat ^<version^>               ^(must match .env.prod GCS_VERSION^)
+echo   prod-up.bat up [version]             ^(version optional; must match .env.prod^)
+echo   prod-up.bat down
 echo   prod-up.bat ps
-echo   prod-up.bat logs caddy --tail 120
-echo   prod-up.bat restart caddy
-echo   prod-up.bat exec api ^<command...^>
+echo   prod-up.bat logs ^<service^> [args...]
+echo   prod-up.bat restart ^<service^> [args...]
+echo   prod-up.bat exec ^<service^> ^<command...^>
+echo   prod-up.bat pyc ^<service^> "^<python code^>" [args...]
 echo   prod-up.bat config
-echo   prod-up.bat health
-echo(
-exit /b 0
+exit /b 1
+
+:fatal
+echo [prod-up] FATAL: could not change directory
+exit /b 1
