@@ -218,6 +218,7 @@ REM exec is non-interactive by default (CI-safe)
 %DC% exec -T %SVC% %TAIL%
 exit /b %ERRORLEVEL%
 
+REM NOTE: This block is quote-sensitive. Do not refactor without running the pyc verification tests.
 :cmd_pyc
 REM prod-up.bat pyc <service> "<python code>" [args...]
 shift
@@ -232,7 +233,9 @@ shift
 set "TAIL="
 :pyc_tail_loop
 if "%~1"=="" goto :pyc_tail_done
-set "TAIL=!TAIL! %~1"
+set "ARG=%1"
+if not "!ARG!"=="!ARG: =!" set "ARG=""!ARG!"""
+set "TAIL=!TAIL! !ARG!"
 shift
 goto :pyc_tail_loop
 :pyc_tail_done
@@ -240,8 +243,9 @@ if defined TAIL set "TAIL=!TAIL:~1!"
 
 REM Pipe code via stdin to python - using PowerShell argument-safe invocation
 REM (no CMD quoting of docker compose args)
-powershell -NoProfile -Command "$ErrorActionPreference='Stop'; $code=$env:PYC_CODE; if([string]::IsNullOrEmpty($code)){ exit 2 }; $envFile=$env:ENV_FILE; $null = $code | & docker compose --env-file $envFile -p '%PROJECT%' -f docker-compose.yml -f docker-compose.prod.yml exec -T '%SVC%' python - %TAIL%; exit $LASTEXITCODE"
+powershell -NoProfile -Command "$ErrorActionPreference='Stop'; $code=$env:PYC_CODE; if([string]::IsNullOrEmpty($code)){ exit 2 }; $envFile=$env:ENV_FILE; $code | & docker compose --env-file $envFile -p '%PROJECT%' -f docker-compose.yml -f docker-compose.prod.yml exec -T '%SVC%' python - %TAIL%; exit $LASTEXITCODE"
 exit /b %ERRORLEVEL%
+
 
 :compose_fail
 echo [prod-up] ERROR: docker compose failed
