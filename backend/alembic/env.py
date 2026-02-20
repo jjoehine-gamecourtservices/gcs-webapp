@@ -1,34 +1,31 @@
-from __future__ import annotations
+from __future__ import with_statement
 
+import os
 from logging.config import fileConfig
 
 from alembic import context
 from sqlalchemy import engine_from_config, pool
 
-from app.core.config import settings
-from app.db.base import Base
-
-import app.models._all_models  # noqa: F401
-
-# this is the Alembic Config object, which provides access to the values
-# within the .ini file in use.
+# Alembic Config object, provides access to values in alembic.ini.
 config = context.config
 
 # Interpret the config file for Python logging.
-# This line sets up loggers basically.
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# Set SQLAlchemy URL from app settings (authoritative)
-config.set_main_option("sqlalchemy.url", settings.DB_URL)
+# IMPORTANT: load models so Base.metadata is populated.
+from app.db.base import Base  # noqa: E402
+from app.models import _all_models  # noqa: F401,E402  (side effects only)
 
-# Provide metadata for 'autogenerate' support
 target_metadata = Base.metadata
 
 
 def run_migrations_offline() -> None:
     """Run migrations in 'offline' mode."""
     url = config.get_main_option("sqlalchemy.url")
+    if not url:
+        raise RuntimeError("sqlalchemy.url is not set in alembic.ini")
+
     context.configure(
         url=url,
         target_metadata=target_metadata,

@@ -13,3 +13,6 @@ class User(Base):
 
     is_master: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+    # Nullable profile key (e.g., to select a configuration/profile in the app)
+    profile_key: Mapped[str | None] = mapped_column(String(128), nullable=True)
