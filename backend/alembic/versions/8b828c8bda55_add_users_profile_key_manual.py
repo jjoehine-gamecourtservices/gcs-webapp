@@ -1,7 +1,7 @@
 """add users.profile_key (manual)
 
 Revision ID: 8b828c8bda55
-Revises: 9d2206edd3eb
+Revises: a0757730eea7
 Create Date: 2026-02-20
 
 """
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision = "8b828c8bda55"
-down_revision = "9d2206edd3eb"
+down_revision = "a0757730eea7"
 branch_labels = None
 depends_on = None
 
