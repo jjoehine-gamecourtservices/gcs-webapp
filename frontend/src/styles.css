@@ -1,0 +1,122 @@
+:root {
+  --bg: #0b1220;
+  --card: rgba(16, 26, 51, 0.92);
+  --text: #e8eefc;
+  --muted: #a8b3d1;
+  --border: rgba(255, 255, 255, 0.12);
+  --focus: rgba(120, 160, 255, 0.45);
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+}
+
+.gcsBg {
+  position: relative;
+  min-height: 100vh;
+  width: 100%;
+  overflow: hidden;
+  background: radial-gradient(1200px 800px at 30% 20%, #16264f 0%, var(--bg) 55%);
+}
+
+.gcsGlow::before,
+.gcsGlow::after {
+  content: "";
+  position: absolute;
+  width: 420px;
+  height: 420px;
+  border-radius: 999px;
+  filter: blur(60px);
+  opacity: 0.35;
+  pointer-events: none;
+}
+
+.gcsGlow::before {
+  left: -140px;
+  top: -140px;
+  background: #4f6bff;
+}
+
+.gcsGlow::after {
+  right: -140px;
+  bottom: -140px;
+  background: #22d3ee;
+}
+
+.gcsGrid {
+  position: absolute;
+  inset: 0;
+  opacity: 0.08;
+  background-image:
+    linear-gradient(to right, rgba(255,255,255,.35) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255,255,255,.35) 1px, transparent 1px);
+  background-size: 48px 48px;
+  pointer-events: none;
+}
+
+.gcsPage {
+  position: relative;
+  z-index: 1;
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+
+.gcsShell {
+  width: 100%;
+  max-width: 520px;
+}
+
+.gcsBuild {
+  opacity: 0.85;
+  font-weight: 700;
+  margin-bottom: 10px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.gcsCard {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 18px;
+  background: var(--card);
+  box-shadow: 0 16px 60px rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(10px);
+}
+
+.gcsPrimaryBtn {
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 1px solid rgba(120, 160, 255, 0.4);
+  background: linear-gradient(
+    180deg,
+    rgba(120, 160, 255, 0.35),
+    rgba(120, 160, 255, 0.18)
+  );
+  color: white;
+  font-weight: 800;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.gcsPrimaryBtn:hover {
+  background: linear-gradient(
+    180deg,
+    rgba(120, 160, 255, 0.55),
+    rgba(120, 160, 255, 0.28)
+  );
+  box-shadow: 0 0 0 3px rgba(120, 160, 255, 0.25);
+}
+
+.gcsPrimaryBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  box-shadow: none;
+}
