@@ -2,6 +2,8 @@ services:
   api:
     image: gamecourt/gcs-api:${GCS_VERSION:?GCS_VERSION is required}
     restart: unless-stopped
+    env_file:
+      - ./.env.prod
     expose:
       - "8000"
     volumes:

@@ -1,0 +1,62 @@
+/* LOGIN SHELL (leave intact; LoginPage depends on this look) */
+.gcsPage {
+  position: relative;
+  z-index: 1;
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+
+.gcsShell {
+  width: 100%;
+  max-width: 520px;
+}
+
+.gcsBuild {
+  opacity: 0.85;
+  font-weight: 700;
+  margin-bottom: 10px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.gcsCard {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 18px;
+  background: var(--card);
+  box-shadow: 0 16px 60px rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(10px);
+}
+
+/* PRIMARY BUTTON (used by LoginPage) */
+.gcsPrimaryBtn {
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 1px solid rgba(120, 160, 255, 0.4);
+  background: linear-gradient(
+    180deg,
+    rgba(120, 160, 255, 0.35),
+    rgba(120, 160, 255, 0.18)
+  );
+  color: white;
+  font-weight: 800;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.gcsPrimaryBtn:hover {
+  background: linear-gradient(
+    180deg,
+    rgba(120, 160, 255, 0.55),
+    rgba(120, 160, 255, 0.28)
+  );
+  box-shadow: 0 0 0 3px rgba(120, 160, 255, 0.25);
+}
+
+.gcsPrimaryBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  box-shadow: none;
+}

@@ -15,8 +15,14 @@ https://gcs.local {
 		respond "ok" 200
 	}
 
-	# IMPORTANT: strip /api before proxying
-	handle_path /api/* {
+	# Special-case health: /api/health -> /health
+	handle /api/health {
+		rewrite * /health
+		reverse_proxy api:8000
+	}
+
+	# All other API paths: DO NOT STRIP /api
+	handle /api/* {
 		reverse_proxy api:8000
 	}
 

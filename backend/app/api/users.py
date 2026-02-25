@@ -39,6 +39,10 @@ class PasswordReset(BaseModel):
     password: str = Field(min_length=8)
 
 
+class DeleteResult(BaseModel):
+    status: str
+
+
 def _normalize_email(email: str) -> str:
     return email.lower().strip()
 
@@ -106,8 +110,7 @@ def update_user(
     master: User = Depends(require_master),
 ):
     if user_id == master.id:
-        # Minimal safety: don’t let master deactivate or mess their own profile here.
-        # If you want to allow profile_key change for master, say so and I’ll loosen this.
+        # Minimal safety: don't let master deactivate or mess their own profile here.
         raise HTTPException(status_code=400, detail="Cannot modify the current master user here")
 
     user = db.get(User, user_id)
@@ -163,3 +166,30 @@ def reset_password(
         is_active=user.is_active,
         profile_key=user.profile_key,
     )
+
+
+@router.delete("/{user_id}", response_model=DeleteResult)
+def delete_user(
+    user_id: int,
+    db: Session = Depends(db_dependency),
+    master: User = Depends(require_master),
+):
+    if user_id == master.id:
+        raise HTTPException(status_code=400, detail="Cannot delete your own user")
+
+    user = db.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    if user.is_master:
+        raise HTTPException(status_code=400, detail="Cannot delete master users")
+
+    db.delete(user)
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        # If later you add FKs that block deletion, this will give a sane error.
+        raise HTTPException(status_code=409, detail="Cannot delete user (referenced by other records)")
+
+    return DeleteResult(status="ok")

@@ -22,10 +22,31 @@ class MeResponse(BaseModel):
     email: EmailStr
     is_master: bool
     is_active: bool
+    permissions: list[str]
 
 
 def _get_user_by_email(db: Session, email: str) -> User | None:
     return db.scalar(select(User).where(User.email == email))
+
+
+def _permissions_for_user(user: User) -> list[str]:
+    """
+    Backend is the source of truth for permissions.
+    For now, keep it simple and deterministic:
+      - Master: full access
+      - Non-master: dashboard only
+    Later: replace with role/permission tables without changing frontend patterns.
+    """
+    if user.is_master:
+        return [
+            "admin:access",
+            "dashboard:view",
+            "users:read",
+            "permissions:read",
+        ]
+    return [
+        "dashboard:view",
+    ]
 
 
 @router.post("/login")
@@ -63,4 +84,5 @@ def me(current_user: User = Depends(get_current_user)):
         email=current_user.email,
         is_master=current_user.is_master,
         is_active=current_user.is_active,
+        permissions=_permissions_for_user(current_user),
     )

@@ -1,0 +1,283 @@
+/* TOP BAR */
+.dashTopbar {
+  padding: 12px 14px;
+
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.dashBrand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 220px;
+}
+
+.dashUser {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.dashUserMeta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  line-height: 1.15;
+}
+
+.dashUserRole {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.dashLogoImage {
+  height: 42px;
+  width: auto;
+  object-fit: contain;
+  display: block;
+}
+
+/* Larger logo: nearly fills header height but keeps buffer */
+.dashLogoImageLarge {
+  height: 56px;
+}
+
+/* Clickable user meta */
+.dashUserTrigger {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  border-radius: 12px;
+}
+
+.dashUserTrigger:focus {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(120, 160, 255, 0.25);
+}
+
+.dashUserMetaClickable {
+  padding: 6px 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(255,255,255,0.06);
+}
+
+.dashUserTrigger:hover .dashUserMetaClickable {
+  background: rgba(255,255,255,0.10);
+}
+
+.dashUserDisplay {
+  font-size: 12px;
+  font-weight: 900;
+  opacity: 0.97;
+}
+
+/* ===== Drawer (Options panel) ===== */
+
+.dashDrawerOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: block;
+}
+
+/* Backdrop: animate opacity */
+.dashDrawerBackdrop {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  background: rgba(0,0,0,0.55);
+  cursor: pointer;
+
+  opacity: 0;
+  transition: opacity 200ms ease;
+}
+
+/* Drawer: slimmer + slide in/out */
+.dashDrawer {
+  position: absolute;
+  top: 0;
+  right: 0;
+  height: 100%;
+  width: min(280px, 86vw);
+
+  border-left: 1px solid rgba(255,255,255,0.12);
+  background: rgba(12, 18, 36, 0.86);
+  backdrop-filter: blur(14px);
+  box-shadow: -24px 0 80px rgba(0,0,0,0.55);
+
+  display: flex;
+  flex-direction: column;
+
+  /* Start closed (off-screen) */
+  transform: translateX(100%);
+  transition: transform 200ms ease;
+  will-change: transform;
+}
+
+/* Open state (triggered by class on overlay) */
+.dashDrawerOverlayOpen .dashDrawerBackdrop {
+  opacity: 1;
+}
+
+.dashDrawerOverlayOpen .dashDrawer {
+  transform: translateX(0);
+}
+
+.dashDrawerHeader {
+  padding: 14px 14px 10px 14px;
+  border-bottom: 1px solid rgba(255,255,255,0.10);
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.dashDrawerTitleBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.dashDrawerTitle {
+  font-weight: 950;
+  font-size: 14px;
+}
+
+.dashDrawerSubtitle {
+  font-size: 12px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 300px;
+}
+
+.dashIconBtn {
+  border: 1px solid rgba(255,255,255,0.16);
+  background: rgba(255,255,255,0.08);
+  color: rgba(255,255,255,0.92);
+  border-radius: 12px;
+  width: 38px;
+  height: 38px;
+  cursor: pointer;
+  font-weight: 950;
+  display: grid;
+  place-items: center;
+}
+
+.dashIconBtn:hover {
+  background: rgba(255,255,255,0.12);
+  box-shadow: 0 0 0 3px rgba(120, 160, 255, 0.18);
+}
+
+.dashDrawerBody {
+  padding: 12px 14px;
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.dashDrawerFooter {
+  padding: 12px 14px 14px 14px;
+  border-top: 1px solid rgba(255,255,255,0.10);
+}
+
+.dashBtnDanger {
+  width: 100%;
+  justify-content: center;
+}
+
+/* Drawer content helpers */
+.dashDrawerStack {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.dashDrawerNavBtn {
+  width: 100%;
+  text-align: left;
+  padding: 12px 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(255,255,255,0.06);
+  color: rgba(255,255,255,0.95);
+  cursor: pointer;
+}
+
+.dashDrawerNavBtn:hover {
+  background: rgba(255,255,255,0.10);
+  box-shadow: 0 0 0 3px rgba(120, 160, 255, 0.16);
+}
+
+.dashDrawerNavMain {
+  font-weight: 950;
+  font-size: 13px;
+}
+
+.dashDrawerNavSub {
+  margin-top: 3px;
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.25;
+}
+
+.dashDrawerBackBtn {
+  align-self: flex-start;
+  padding: 9px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,0.14);
+  background: rgba(255,255,255,0.06);
+  color: rgba(255,255,255,0.92);
+  cursor: pointer;
+  font-weight: 900;
+}
+
+.dashDrawerBackBtn:hover {
+  background: rgba(255,255,255,0.10);
+  box-shadow: 0 0 0 3px rgba(120, 160, 255, 0.16);
+}
+
+.dashDrawerStubCard {
+  border: 1px solid rgba(255,255,255,0.10);
+  border-radius: 14px;
+  background: rgba(0,0,0,0.18);
+  padding: 12px;
+}
+
+.dashDrawerStubTitle {
+  font-weight: 950;
+  font-size: 13px;
+}
+
+.dashDrawerStubText {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.35;
+}
+
+.dashDrawerHint {
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.35;
+  opacity: 0.95;
+}
+
+/* Respect reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .dashDrawer,
+  .dashDrawerBackdrop {
+    transition: none;
+  }
+}

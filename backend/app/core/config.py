@@ -23,5 +23,14 @@ class Settings(BaseSettings):
     MASTER_EMAIL: str = Field(default="master@gcs.local")
     MASTER_PASSWORD: str = Field(default="ChangeMeNow!")
 
+    # Monday.com integration
+    MONDAY_API_TOKEN: str = Field(default="")
+    MONDAY_API_URL: str = Field(default="https://api.monday.com/v2")
+    MONDAY_TIMEOUT_SECONDS: int = Field(default=30)
+
+    MONDAY_BOARD_ID: int = Field(default=0)
+    MONDAY_JOB_COLUMN_ID: str = Field(default="")  # e.g. job_____1
+    MONDAY_UPCOMING_LIMIT: int = Field(default=50)
+
 
 settings = Settings()

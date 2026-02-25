@@ -4,6 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.api.auth import router as auth_router
 from app.api.users import router as users_router
+from app.api.monday import router as monday_router
 
 
 def create_app() -> FastAPI:
@@ -23,8 +24,10 @@ def create_app() -> FastAPI:
     def health():
         return {"status": "ok"}
 
-    app.include_router(auth_router, prefix="/auth", tags=["auth"])
-    app.include_router(users_router, prefix="/users", tags=["users"])
+    # Match prod reverse-proxy contract: API routes live under /api/*
+    app.include_router(auth_router, prefix="/api/auth", tags=["auth"])
+    app.include_router(users_router, prefix="/api/users", tags=["users"])
+    app.include_router(monday_router, prefix="/api/monday", tags=["monday"])
 
     return app
 
