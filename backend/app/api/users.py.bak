@@ -42,20 +42,7 @@ class UserCreate(BaseModel):
 
 
 class UserUpdate(BaseModel):
-    """
-    NOTE:
-    - This endpoint is master-only (require_master), but we still enforce field-level safety.
-    - We allow safe profile edits for ANY user (including masters).
-    - We allow operational fields (is_active/profile_key) ONLY for non-master targets.
-    """
-
-    # Safe profile fields (allowed for ANY user, including masters)
-    email: EmailStr | None = None
-    name: str | None = None
-    phone: str | None = None
-    position: str | None = None
-
-    # Operational/admin fields (allowed only for NON-master targets)
+    # Keep this minimal. No is_master toggling unless you explicitly want it.
     is_active: bool | None = None
     profile_key: str | None = None
 
@@ -141,9 +128,6 @@ def create_user(
         is_master=requested_is_master,
         is_active=payload.is_active,
         profile_key=payload.profile_key,
-        name=None,
-        phone=None,
-        position=None,
     )
 
     db.add(user)
@@ -162,68 +146,29 @@ def update_user(
     user_id: int,
     payload: UserUpdate,
     db: Session = Depends(db_dependency),
-    _master: User = Depends(require_master),
+    master: User = Depends(require_master),
 ):
-    """
-    Master-only endpoint.
+    # Keep existing protections intact.
+    if user_id == master.id:
+        # Minimal safety: don't let master deactivate or mess their own profile here.
+        raise HTTPException(status_code=400, detail="Cannot modify the current master user here")
 
-    Business requirement:
-      - Master can edit safe profile fields (email/name/phone/position) for ANY user,
-        including other master users.
-
-    Safeguards:
-      - For MASTER targets: block operational fields (is_active/profile_key).
-      - For NON-MASTER targets: allow operational fields plus safe profile fields.
-      - This endpoint does NOT allow privilege changes (is_master) or password changes.
-    """
     user = db.get(User, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
-    # Determine what the caller is trying to change (only for fields actually provided)
-    # Pydantic Optional fields default to None; we treat "None" as "not provided" here
-    # because your UI sends only fields being edited.
-    wants_email = payload.email is not None
-    wants_name = payload.name is not None
-    wants_phone = payload.phone is not None
-    wants_position = payload.position is not None
-    wants_is_active = payload.is_active is not None
-    wants_profile_key = payload.profile_key is not None
-
-    # Block protected changes on MASTER targets
     if user.is_master:
-        if wants_is_active or wants_profile_key:
-            raise HTTPException(
-                status_code=400,
-                detail="Cannot modify protected fields for master users",
-            )
+        raise HTTPException(status_code=400, detail="Cannot modify master users")
 
-    # Apply SAFE profile fields (allowed for ANY user, including masters)
-    if wants_email:
-        user.email = _normalize_email(str(payload.email))
-    if wants_name:
-        user.name = payload.name
-    if wants_phone:
-        user.phone = payload.phone
-    if wants_position:
-        user.position = payload.position
-
-    # Apply operational fields ONLY for non-master targets
-    if not user.is_master:
-        if wants_is_active:
-            user.is_active = payload.is_active
-        if wants_profile_key:
-            user.profile_key = payload.profile_key
+    if payload.is_active is not None:
+        user.is_active = payload.is_active
+    if payload.profile_key is not None:
+        user.profile_key = payload.profile_key
 
     db.add(user)
-    try:
-        db.commit()
-    except IntegrityError:
-        db.rollback()
-        # Most likely: email uniqueness violation
-        raise HTTPException(status_code=409, detail="Email already exists")
-
+    db.commit()
     db.refresh(user)
+
     return _as_user_out(user)
 
 

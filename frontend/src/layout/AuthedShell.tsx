@@ -1,6 +1,6 @@
 // frontend/src/layout/AuthedShell.tsx
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState, useCallback } from "react";
 import type { User } from "../types/user";
 import Header from "./header/Header";
 import NavPanel, { type NavItem, type NavKey } from "./NavPanel";
@@ -9,6 +9,7 @@ import DashboardPage from "../pages/dashboard/DashboardPage";
 import AdminPage from "../pages/admin/AdminPage";
 import JobsPage from "../pages/jobs/JobsPage";
 import TasksPage from "../pages/tasks/TasksPage";
+import type { PermissionKey } from "../pages/admin/permissions/permissions.types";
 
 type Props = {
   user: User;
@@ -23,9 +24,6 @@ const ALL_MODULES: NavItem[] = [
 ];
 
 function computeAllowedModules(user: User): NavKey[] {
-  // Contract:
-  // - master always sees all modules
-  // - default for regular users is dashboard only (until real permissions exist)
   if (user.is_master) return ["dashboard", "admin", "jobs", "tasks"];
   return ["dashboard"];
 }
@@ -33,6 +31,8 @@ function computeAllowedModules(user: User): NavKey[] {
 function isKeyAllowed(allowed: NavKey[], key: NavKey): boolean {
   return allowed.includes(key);
 }
+
+type JobsRoute = { page: "all" } | { page: "overview"; jobId: string };
 
 export default function AuthedShell({ user, onLogout }: Props) {
   const allowedKeys = useMemo(() => computeAllowedModules(user), [user]);
@@ -43,8 +43,8 @@ export default function AuthedShell({ user, onLogout }: Props) {
   }, [allowedKeys]);
 
   const [active, setActive] = useState<NavKey>(() => allowedKeys[0] ?? "dashboard");
+  const [jobsRoute, setJobsRoute] = useState<JobsRoute>({ page: "all" });
 
-  // Ensure active module is always valid when user/permissions change
   useEffect(() => {
     if (!isKeyAllowed(allowedKeys, active)) {
       setActive(allowedKeys[0] ?? "dashboard");
@@ -52,43 +52,61 @@ export default function AuthedShell({ user, onLogout }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [allowedKeys.join("|"), active]);
 
+  const openJobsAll = useCallback(() => {
+    setJobsRoute({ page: "all" });
+    setActive("jobs");
+  }, []);
+
+  const openJobOverview = useCallback((jobId: string) => {
+    setJobsRoute({ page: "overview", jobId });
+    setActive("jobs");
+  }, []);
+
+  const onSelectModule = useCallback((key: NavKey) => {
+    setActive(key);
+    if (key === "jobs") setJobsRoute({ page: "all" });
+  }, []);
+
   const roleLabel = user.is_master ? "Master" : "User";
 
+  const permsSet = useMemo(() => {
+    const list = (user.permissions ?? []) as PermissionKey[];
+    return new Set<PermissionKey>(list);
+  }, [user.permissions]);
+
   const content = useMemo(() => {
-    // Defense-in-depth: never render a module the user isn't allowed to access,
-    // even if "active" is ever corrupted (future deep links, persistence, etc).
-    if (!isKeyAllowed(allowedKeys, active)) {
-      return <DashboardPage user={user} />;
-    }
+    const fallback = (
+      <DashboardPage user={user} onViewAllJobs={openJobsAll} onOpenJobOverview={openJobOverview} />
+    );
+
+    if (!isKeyAllowed(allowedKeys, active)) return fallback;
 
     switch (active) {
       case "dashboard":
-        return <DashboardPage user={user} />;
+        return fallback;
 
       case "admin":
-        // Explicit guard (even if computeAllowedModules changes later)
-        if (!user.is_master) return <DashboardPage user={user} />;
-        return <AdminPage user={user} />;
+        if (!user.is_master) return fallback;
+        return <AdminPage userIsMaster={user.is_master} perms={permsSet} />;
 
       case "jobs":
-        return <JobsPage />;
+        return <JobsPage route={jobsRoute} onOpenAll={openJobsAll} onOpenOverview={openJobOverview} />;
 
       case "tasks":
         return <TasksPage />;
 
       default:
-        return <DashboardPage user={user} />;
+        return fallback;
     }
-  }, [active, allowedKeys, user]);
+  }, [active, allowedKeys, user, jobsRoute, openJobsAll, openJobOverview, permsSet]);
 
   return (
     <div className="dashRoot" aria-label="Dashboard Shell">
       <Header userEmail={user.email} roleLabel={roleLabel} onLogout={onLogout} />
 
       <div className="dashShell">
-        <NavPanel items={navItems} activeKey={active} onSelect={setActive} />
+        <NavPanel items={navItems} activeKey={active} onSelect={onSelectModule} />
 
-        {/* The purple area */}
         <main className="dashContent" role="main" aria-label="Module Content" key={active}>
           {content}
         </main>

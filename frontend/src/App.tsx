@@ -5,6 +5,7 @@ import "./styles/base.css";
 import "./styles/login.css";
 import "./styles/shell.css";
 import "./styles/header.css";
+import "./styles/dashboard.css";
 
 import { apiJson, apiText } from "./api/api";
 import LoginPage from "./auth/LoginPage";

@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import UsersTable from "./UsersTable";
-import type { AdminUserRow } from "./users.types";
+import type { AdminUserRow, PatchUserRequest } from "./users.types";
 import { deleteUser, listUsers, patchUser, resetUserPassword } from "./users.api";
 
 type Props = {
@@ -31,7 +31,7 @@ export default function UsersListPage({ refreshTick = 0 }: Props) {
     const r = await listUsers();
     if (!r.ok || !r.data) {
       setRows([]);
-      setMsg(`❌ Failed to load users: HTTP ${r.status}: ${r.text}`);
+      setMsg(`✖ Failed to load users: HTTP ${r.status}: ${r.text}`);
       setLoading(false);
       return;
     }
@@ -62,11 +62,31 @@ export default function UsersListPage({ refreshTick = 0 }: Props) {
       try {
         const r = await patchUser(id, { is_active: nextActive });
         if (!r.ok || !r.data) {
-          setMsg(`❌ Update failed: HTTP ${r.status}: ${r.text}`);
+          setMsg(`✖ Update failed: HTTP ${r.status}: ${r.text}`);
           return;
         }
-        setMsg(`✅ ${r.data.email} is now ${r.data.is_active ? "Active" : "Disabled"}.`);
+        setMsg(`✓ ${r.data.email} is now ${r.data.is_active ? "Active" : "Disabled"}.`);
         await load();
+      } finally {
+        markBusy(id, false);
+      }
+    },
+    [load, markBusy]
+  );
+
+  const onSaveProfile = useCallback(
+    async (id: number, patch: PatchUserRequest) => {
+      setMsg("");
+      markBusy(id, true);
+      try {
+        const r = await patchUser(id, patch);
+        if (!r.ok || !r.data) {
+          setMsg(`✖ Save failed: HTTP ${r.status}: ${r.text}`);
+          return { ok: false as const, message: `HTTP ${r.status}: ${r.text}` };
+        }
+        setMsg(`✓ Saved profile for ${r.data.email}.`);
+        await load();
+        return { ok: true as const, message: "Saved." };
       } finally {
         markBusy(id, false);
       }
@@ -79,7 +99,7 @@ export default function UsersListPage({ refreshTick = 0 }: Props) {
       setMsg("");
       const pwd = newPassword.trim();
       if (!pwd) {
-        setMsg("❌ Password is required.");
+        setMsg("✖ Password is required.");
         return;
       }
 
@@ -87,10 +107,10 @@ export default function UsersListPage({ refreshTick = 0 }: Props) {
       try {
         const r = await resetUserPassword(id, { password: pwd });
         if (!r.ok || !r.data) {
-          setMsg(`❌ Reset password failed: HTTP ${r.status}: ${r.text}`);
+          setMsg(`✖ Reset password failed: HTTP ${r.status}: ${r.text}`);
           return;
         }
-        setMsg(`✅ Password updated for ${r.data.email}.`);
+        setMsg(`✓ Password updated for ${r.data.email}.`);
       } finally {
         markBusy(id, false);
       }
@@ -105,10 +125,10 @@ export default function UsersListPage({ refreshTick = 0 }: Props) {
       try {
         const r = await deleteUser(id);
         if (!r.ok || !r.data) {
-          setMsg(`❌ Delete failed: HTTP ${r.status}: ${r.text}`);
+          setMsg(`✖ Delete failed: HTTP ${r.status}: ${r.text}`);
           return;
         }
-        setMsg("✅ User deleted.");
+        setMsg("✓ User deleted.");
         await load();
       } finally {
         markBusy(id, false);
@@ -129,7 +149,7 @@ export default function UsersListPage({ refreshTick = 0 }: Props) {
         <div className="dashCardHead">
           <div>
             <div className="dashCardTitle">Users</div>
-            <div className="dashMuted">Enable/disable accounts, set passwords, or delete users.</div>
+            <div className="dashMuted">Enable/disable accounts, edit profile details, reset passwords, or delete users.</div>
           </div>
           <div className="dashMiniPill">{loading ? "Loading..." : `${rows.length} users`}</div>
         </div>
@@ -142,6 +162,7 @@ export default function UsersListPage({ refreshTick = 0 }: Props) {
               rows={rows}
               busyUserIds={busyUserIds}
               onToggleActive={onToggleActive}
+              onSaveProfile={onSaveProfile}
               onResetPassword={onResetPassword}
               onDelete={onDelete}
             />

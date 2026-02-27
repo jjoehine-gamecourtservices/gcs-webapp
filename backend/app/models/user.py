@@ -1,5 +1,5 @@
 from sqlalchemy import String, Boolean
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
 
@@ -14,5 +14,14 @@ class User(Base):
     is_master: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
-    # Nullable profile key (e.g., to select a configuration/profile in the app)
     profile_key: Mapped[str | None] = mapped_column(String(128), nullable=True)
+
+    name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    phone: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    position: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+    roles = relationship(
+        "Role",
+        secondary="user_roles",
+        back_populates="users",
+    )

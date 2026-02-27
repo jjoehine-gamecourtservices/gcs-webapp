@@ -1,26 +1,30 @@
-"""add users.profile_key (manual)
+"""add user profile fields
 
-Revision ID: 8b828c8bda55
-Revises: a0757730eea7
-Create Date: 2026-02-20
+Revision ID: b9a9d377c09e
+Revises: 8b828c8bda55
+Create Date: 2026-02-27
 
 """
+from typing import Sequence, Union
+
 from alembic import op
 import sqlalchemy as sa
 
+
 # revision identifiers, used by Alembic.
-revision = "8b828c8bda55"
-down_revision = "a0757730eea7"
-branch_labels = None
-depends_on = None
+revision: str = "b9a9d377c09e"
+down_revision: Union[str, None] = "8b828c8bda55"
+branch_labels: Union[str, Sequence[str], None] = None
+depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.add_column(
-        "users",
-        sa.Column("profile_key", sa.String(length=128), nullable=True),
-    )
+    op.add_column("users", sa.Column("name", sa.String(length=255), nullable=True))
+    op.add_column("users", sa.Column("phone", sa.String(length=64), nullable=True))
+    op.add_column("users", sa.Column("position", sa.String(length=255), nullable=True))
 
 
 def downgrade() -> None:
-    op.drop_column("users", "profile_key")
+    op.drop_column("users", "position")
+    op.drop_column("users", "phone")
+    op.drop_column("users", "name")

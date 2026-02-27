@@ -24,6 +24,12 @@ class MeResponse(BaseModel):
     is_active: bool
     permissions: list[str]
 
+    # Profile fields (DB-backed)
+    # Optional to avoid breaking if existing rows are NULL or older DBs lack values.
+    name: str | None = None
+    phone: str | None = None
+    position: str | None = None
+
 
 def _get_user_by_email(db: Session, email: str) -> User | None:
     return db.scalar(select(User).where(User.email == email))
@@ -79,10 +85,15 @@ def logout(response: Response):
 
 @router.get("/me", response_model=MeResponse)
 def me(current_user: User = Depends(get_current_user)):
+    # get_current_user should load the user from the DB using the token subject (user.id).
+    # The returned object is the DB-backed source of truth for profile fields.
     return MeResponse(
         id=current_user.id,
         email=current_user.email,
         is_master=current_user.is_master,
         is_active=current_user.is_active,
         permissions=_permissions_for_user(current_user),
+        name=getattr(current_user, "name", None),
+        phone=getattr(current_user, "phone", None),
+        position=getattr(current_user, "position", None),
     )

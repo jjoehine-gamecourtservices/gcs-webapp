@@ -1,18 +1,21 @@
 import React from "react";
+import JobsAllPage from "./pages/all/JobsAllPage";
+import JobOverviewPage from "./pages/overview/JobOverviewPage";
 
-export default function JobsPage() {
-  return (
-    <div className="dashCard">
-      <div className="dashCardHead">
-        <div>
-          <div className="dashCardTitle">Jobs</div>
-          <div className="dashMuted">Not started yet.</div>
-        </div>
-      </div>
+type JobsRoute =
+  | { page: "all" }
+  | { page: "overview"; jobId: string };
 
-      <div style={{ marginTop: 12 }} className="dashMuted">
-        Coming soon.
-      </div>
-    </div>
-  );
+type Props = {
+  route: JobsRoute;
+  onOpenAll: () => void;
+  onOpenOverview: (jobId: string) => void;
+};
+
+export default function JobsPage({ route, onOpenAll, onOpenOverview }: Props) {
+  if (route.page === "overview") {
+    return <JobOverviewPage jobId={route.jobId} onBack={onOpenAll} />;
+  }
+
+  return <JobsAllPage onOpenOverview={onOpenOverview} />;
 }

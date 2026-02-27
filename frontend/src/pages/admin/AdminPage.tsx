@@ -1,258 +1,279 @@
-import React, { useCallback, useMemo, useReducer, useState } from "react";
-import type { User } from "../../types/user";
-
-import type { AdminAction, AdminNavState } from "./admin.types";
-import { adminInitialState, adminReducer } from "./state/admin.state";
-
-import type { PermissionSet } from "./permissions/permissions.types";
-
+import React, { useCallback, useMemo, useState } from "react";
 import AdminLayout from "./layout/AdminLayout";
+import type { AdminNavState } from "./admin.types";
+import type { PermissionSet, PermissionKey } from "./permissions/permissions.types";
+
 import AdminHomePage from "./pages/home/AdminHomePage";
-import UsersListPage from "./pages/users/UsersListPage";
 import PermissionsPage from "./pages/permissions/PermissionsPage";
+import UsersListPage from "./pages/users/UsersListPage";
 import { createUser } from "./pages/users/users.api";
 
-function resolvePermissions(user: User): PermissionSet {
-  const perms = new Set<string>();
+type Props = {
+  userIsMaster: boolean;
+  perms?: PermissionSet;
+};
 
-  if (Array.isArray(user.permissions)) {
-    for (const p of user.permissions) perms.add(p);
-  } else {
-    if (user.is_master) perms.add("admin:access");
-    if (user.is_master) {
-      perms.add("users:read");
-      perms.add("permissions:read");
-    }
-  }
+export default function AdminPage({ userIsMaster, perms }: Props) {
+  const [page, setPage] = useState<AdminNavState>({ id: "home" });
 
-  return perms as PermissionSet;
-}
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createBusy, setCreateBusy] = useState(false);
+  const [createMsg, setCreateMsg] = useState("");
 
-function renderAdminPage(
-  page: AdminNavState,
-  perms: PermissionSet,
-  dispatch: React.Dispatch<AdminAction>,
-  usersRefreshTick: number
-) {
-  switch (page.id) {
-    case "home":
-      return <AdminHomePage perms={perms} onNavigate={(to) => dispatch({ type: "NAV_TO", page: to })} />;
-
-    case "users:list":
-      return <UsersListPage refreshTick={usersRefreshTick} />;
-
-    case "permissions":
-      return <PermissionsPage />;
-
-    default:
-      return null;
-  }
-}
-
-export default function AdminPage({ user }: { user: User }) {
-  if (!user.is_master) {
-    return (
-      <div className="dashCard">
-        <div className="dashCardHead">
-          <div>
-            <div className="dashCardTitle">Admin</div>
-            <div className="dashMuted">You do not have access to this module.</div>
-          </div>
-          <div className="dashMiniPill">Not authorized</div>
-        </div>
-      </div>
-    );
-  }
-
-  const perms = useMemo(() => resolvePermissions(user), [user]);
-  const [page, dispatch] = useReducer(adminReducer, undefined, adminInitialState);
-
-  // Create modal state
-  const [showCreate, setShowCreate] = useState(false);
   const [newEmail, setNewEmail] = useState("");
   const [newPassword, setNewPassword] = useState("");
-  const [createBusy, setCreateBusy] = useState(false);
-  const [createMsg, setCreateMsg] = useState<string>("");
+  const [newIsMaster, setNewIsMaster] = useState(false);
 
-  const [usersRefreshTick, setUsersRefreshTick] = useState(0);
+  // Forces UsersListPage to remount (and re-fetch) after a successful user creation.
+  const [usersListNonce, setUsersListNonce] = useState(0);
+
+  const effectivePerms: PermissionSet = useMemo(() => {
+    return perms ?? (new Set<PermissionKey>() as PermissionSet);
+  }, [perms]);
 
   const closeCreate = useCallback(() => {
-    setShowCreate(false);
-    setNewEmail("");
-    setNewPassword("");
+    setCreateOpen(false);
     setCreateBusy(false);
     setCreateMsg("");
+    setNewEmail("");
+    setNewPassword("");
+    setNewIsMaster(false);
   }, []);
 
-  const onCreateSubmit = useCallback(async () => {
+  const onCreate = useCallback(async () => {
+    setCreateMsg("");
     const email = newEmail.trim();
-    const password = newPassword;
+    const password = newPassword.trim();
 
     if (!email || !password) {
-      setCreateMsg("❌ Email and password are required.");
+      setCreateMsg("✖ Email and password are required.");
       return;
     }
 
-    setCreateBusy(true);
-    setCreateMsg("Creating user...");
+    if (newIsMaster) {
+      const ok = window.confirm(
+        `Create MASTER account for:\n\n${email}\n\nMaster accounts can manage users and permissions. Continue?`
+      );
+      if (!ok) return;
+    }
 
+    setCreateBusy(true);
     try {
-      const r = await createUser({ email, password });
+      const r = await createUser({
+        email,
+        password,
+        // Keep behavior: omit unless true (backend should default false if missing).
+        is_master: newIsMaster ? true : undefined,
+      });
+
       if (!r.ok || !r.data) {
-        setCreateMsg(`❌ Create failed: HTTP ${r.status}: ${r.text}`);
+        setCreateMsg(`✖ Create failed: HTTP ${r.status}: ${r.text}`);
         return;
       }
 
-      setCreateMsg(`✅ Created: ${r.data.email}`);
-      setUsersRefreshTick((n) => n + 1);
+      setCreateMsg(`✓ Created: ${r.data.email} (${r.data.is_master ? "Master" : "User"})`);
 
-      // Close after success
-      setTimeout(() => closeCreate(), 350);
+      // Reset fields
+      setNewEmail("");
+      setNewPassword("");
+      setNewIsMaster(false);
+
+      // Refresh Accounts list instantly (without requiring a page reload)
+      setUsersListNonce((n) => n + 1);
     } finally {
       setCreateBusy(false);
     }
-  }, [closeCreate, newEmail, newPassword]);
+  }, [newEmail, newPassword, newIsMaster]);
 
-  const roleLabel = user.is_master ? "Master" : "User";
+  const title = useMemo(() => {
+    if (page.id === "users:list") return "Accounts";
+    if (page.id === "permissions") return "Permissions";
+    return "Admin";
+  }, [page.id]);
 
-  const headerActions =
-    page.id === "users:list" ? (
-      <>
-        <button
-          type="button"
-          className="dashMiniPill"
-          style={{ cursor: "pointer" }}
-          onClick={() => setShowCreate(true)}
-          title="Create a new user"
+  const subtitle = useMemo(() => {
+    if (page.id === "users:list") return "Manage accounts.";
+    if (page.id === "permissions") return "Manage module permissions.";
+    return "Manage users and module permissions.";
+  }, [page.id]);
+
+  const actions = useMemo(() => {
+    if (!userIsMaster) return null;
+
+    return (
+      <button
+        type="button"
+        className="dashMiniPill"
+        style={{ cursor: "pointer" }}
+        onClick={() => setCreateOpen(true)}
+        title="Create a new user"
+      >
+        Create User
+      </button>
+    );
+  }, [userIsMaster]);
+
+  return (
+    <AdminLayout
+      title={title}
+      subtitle={subtitle}
+      page={page}
+      onGoHome={() => setPage({ id: "home" })}
+      actions={actions}
+    >
+      {page.id === "home" ? <AdminHomePage perms={effectivePerms} onNavigate={(to) => setPage(to)} /> : null}
+
+      {page.id === "users:list" ? <UsersListPage key={usersListNonce} /> : null}
+      {page.id === "permissions" ? <PermissionsPage /> : null}
+
+      {createOpen ? (
+        <div
+          role="dialog"
+          aria-modal="true"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) closeCreate();
+          }}
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.55)",
+            display: "flex",
+            justifyContent: "center",
+            alignItems: "flex-start",
+            padding: "40px 16px",
+            overflowY: "auto",
+            zIndex: 9999,
+          }}
         >
-          Create User
-        </button>
-
-        {showCreate ? (
           <div
-            role="dialog"
-            aria-modal="true"
-            aria-label="Create User"
+            className="dashCard"
             style={{
-              position: "fixed",
-              inset: 0,
-              background: "rgba(0,0,0,0.55)",
-              display: "grid",
-              placeItems: "center",
-              zIndex: 1000,
-              padding: 16,
-            }}
-            onMouseDown={(e) => {
-              if (e.target === e.currentTarget) closeCreate();
+              width: "min(720px, 100%)",
+              boxSizing: "border-box",
+              maxHeight: "calc(100vh - 80px)",
+              overflowY: "auto",
             }}
           >
-            <div
-              className="dashCard"
-              style={{
-                width: "min(720px, 96vw)",
-                maxHeight: "90vh",
-                overflow: "auto",
-              }}
-            >
-              <div className="dashCardHead">
-                <div>
-                  <div className="dashCardTitle">Create User</div>
-                  <div className="dashMuted">Requires email + password.</div>
-                </div>
-                <button type="button" className="dashMiniPill" onClick={closeCreate} style={{ cursor: "pointer" }}>
-                  Close
-                </button>
+            <div className="dashCardHead">
+              <div>
+                <div className="dashCardTitle">Create User</div>
+                <div className="dashMuted">Requires email + password.</div>
               </div>
+              <button type="button" className="dashMiniPill" onClick={closeCreate} style={{ cursor: "pointer" }}>
+                Close
+              </button>
+            </div>
 
-              <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
-                <input
-                  value={newEmail}
-                  onChange={(e) => setNewEmail(e.target.value)}
-                  placeholder="email@gamecourtservices.com"
-                  disabled={createBusy}
-                  style={{
-                    width: "100%",
-                    padding: "10px 12px",
-                    borderRadius: 10,
-                    border: "1px solid rgba(255,255,255,0.18)",
-                    background: "rgba(0,0,0,0.18)",
-                    color: "var(--text)",
-                    outline: "none",
-                    fontSize: 14,
-                  }}
-                />
+            {createMsg ? (
+              <div className="dashMuted" style={{ marginTop: 10 }}>
+                {createMsg}
+              </div>
+            ) : null}
 
-                <input
-                  value={newPassword}
-                  onChange={(e) => setNewPassword(e.target.value)}
-                  placeholder="Temporary password"
-                  disabled={createBusy}
-                  style={{
-                    width: "100%",
-                    padding: "10px 12px",
-                    borderRadius: 10,
-                    border: "1px solid rgba(255,255,255,0.18)",
-                    background: "rgba(0,0,0,0.18)",
-                    color: "var(--text)",
-                    outline: "none",
-                    fontSize: 14,
-                  }}
-                />
+            <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "1fr", gap: 10 }}>
+              <input
+                value={newEmail}
+                onChange={(e) => setNewEmail(e.target.value)}
+                placeholder="email@gamecourtservices.com"
+                disabled={createBusy}
+                style={inputStyle}
+              />
 
-                <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-                  <button
-                    type="button"
-                    className="dashMiniPill"
-                    onClick={onCreateSubmit}
-                    disabled={createBusy || newEmail.trim().length === 0 || newPassword.trim().length === 0}
-                    style={{
-                      cursor:
-                        createBusy || newEmail.trim().length === 0 || newPassword.trim().length === 0
-                          ? "not-allowed"
-                          : "pointer",
-                      opacity:
-                        createBusy || newEmail.trim().length === 0 || newPassword.trim().length === 0 ? 0.65 : 1,
-                    }}
-                  >
-                    {createBusy ? "Creating..." : "Create"}
-                  </button>
+              <input
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                placeholder="Temporary password"
+                disabled={createBusy}
+                style={inputStyle}
+              />
 
-                  {createMsg ? <span className="dashMuted">{createMsg}</span> : null}
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <span className="dashMuted">Master account</span>
+                  <ToggleSwitch checked={newIsMaster} disabled={createBusy} onChange={setNewIsMaster} />
                 </div>
+
+                <button
+                  type="button"
+                  className="dashMiniPill"
+                  disabled={createBusy || newEmail.trim().length === 0 || newPassword.trim().length === 0}
+                  onClick={onCreate}
+                  style={{
+                    cursor:
+                      createBusy || newEmail.trim().length === 0 || newPassword.trim().length === 0
+                        ? "not-allowed"
+                        : "pointer",
+                    opacity:
+                      createBusy || newEmail.trim().length === 0 || newPassword.trim().length === 0 ? 0.65 : 1,
+                  }}
+                >
+                  Create
+                </button>
               </div>
             </div>
           </div>
-        ) : null}
-      </>
-    ) : null;
-
-  return (
-    <div>
-      <div className="dashCard" style={{ marginBottom: 12 }}>
-        <div className="dashCardHead">
-          <div>
-            <div className="dashCardTitle">Admin</div>
-            <div className="dashMuted">Manage users and module permissions.</div>
-          </div>
-          <div className="dashMiniPill">{roleLabel}</div>
         </div>
-      </div>
-
-      <AdminLayout
-        title={page.id === "home" ? "Admin Dashboard" : page.id === "users:list" ? "Accounts" : "Permissions"}
-        subtitle={
-          page.id === "home"
-            ? "Choose an area to manage."
-            : page.id === "users:list"
-            ? "Create, modify, and disable accounts."
-            : "Control access rules (coming next)."
-        }
-        page={page}
-        onGoHome={() => dispatch({ type: "NAV_HOME" })}
-        actions={headerActions}
-      >
-        {renderAdminPage(page, perms, dispatch, usersRefreshTick)}
-      </AdminLayout>
-    </div>
+      ) : null}
+    </AdminLayout>
   );
 }
+
+function ToggleSwitch({
+  checked,
+  disabled,
+  onChange,
+}: {
+  checked: boolean;
+  disabled?: boolean;
+  onChange: (next: boolean) => void;
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      disabled={disabled}
+      onClick={() => onChange(!checked)}
+      style={{
+        width: 48,
+        height: 28,
+        borderRadius: 999,
+        border: "1px solid rgba(255,255,255,0.18)",
+        background: checked ? "rgba(80, 200, 120, 0.55)" : "rgba(255,255,255,0.10)",
+        position: "relative",
+        padding: 0,
+        cursor: disabled ? "not-allowed" : "pointer",
+        opacity: disabled ? 0.65 : 1,
+        transition: "background 120ms ease",
+      }}
+      title={checked ? "Master enabled" : "Master disabled"}
+    >
+      <span
+        aria-hidden="true"
+        style={{
+          position: "absolute",
+          top: 3,
+          left: checked ? 24 : 3,
+          width: 22,
+          height: 22,
+          borderRadius: 999,
+          background: "rgba(255,255,255,0.90)",
+          boxShadow: "0 2px 10px rgba(0,0,0,0.35)",
+          transition: "left 120ms ease",
+        }}
+      />
+    </button>
+  );
+}
+
+const inputStyle: React.CSSProperties = {
+  width: "100%",
+  padding: "10px 12px",
+  borderRadius: 10,
+  border: "1px solid rgba(255,255,255,0.18)",
+  background: "rgba(0,0,0,0.18)",
+  color: "var(--text)",
+  outline: "none",
+  fontSize: 13,
+  boxSizing: "border-box",
+};

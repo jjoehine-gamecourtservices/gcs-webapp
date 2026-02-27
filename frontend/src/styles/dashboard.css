@@ -1,0 +1,71 @@
+/* Dashboard layout A: left profile column + right jobs column */
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: 360px 1fr;
+  gap: 16px;
+  align-items: start;
+}
+
+/* Left column holds a square-ish profile card and a reserved empty slot */
+.dashboard-left {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.dashboard-profileSquare {
+  width: 100%;
+  max-width: 360px;
+}
+
+/* Intentional dead space for future module */
+.dashboard-leftSlot {
+  width: 100%;
+  max-width: 360px;
+  min-height: 260px;
+  border-radius: 12px;
+  background: transparent;
+}
+
+/* Right column */
+.dashboard-right {
+  min-width: 0; /* prevents grid overflow issues */
+}
+
+/* Responsive collapse */
+@media (max-width: 1000px) {
+  .dashboard-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-profileSquare,
+  .dashboard-leftSlot {
+    max-width: none;
+  }
+}
+
+.dashProfileIdentity {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.dashProfileName {
+  font-weight: 700;
+  font-size: 1.05rem;
+  line-height: 1.2;
+}
+
+.dashProfileEmail {
+  font-weight: 600;
+  opacity: 0.95;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dashProfileMeta {
+  opacity: 0.85;
+}

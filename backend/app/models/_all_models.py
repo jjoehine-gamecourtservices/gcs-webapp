@@ -7,5 +7,10 @@ This module exists so that:
 Do NOT import this from app.db.base (that causes circular imports).
 """
 
-# Import each model module here.
+# Core models
 from app.models.user import User  # noqa: F401
+
+# RBAC models
+from app.models.role import Role  # noqa: F401
+from app.models.permission import Permission  # noqa: F401
+from app.models.associations import RolePermission, UserRole  # noqa: F401
