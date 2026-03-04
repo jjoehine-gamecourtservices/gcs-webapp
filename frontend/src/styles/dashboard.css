@@ -4,6 +4,7 @@
   grid-template-columns: 360px 1fr;
   gap: 16px;
   align-items: start;
+  height: 100%; /* added: ensures right column can scroll */
 }
 
 /* Left column holds a square-ish profile card and a reserved empty slot */
@@ -29,7 +30,12 @@
 
 /* Right column */
 .dashboard-right {
-  min-width: 0; /* prevents grid overflow issues */
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1 1 auto;        /* ensures it expands to fill parent */
+  height: 100%;           /* added: gives the inner container a real height */
 }
 
 /* Responsive collapse */

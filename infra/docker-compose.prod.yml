@@ -8,6 +8,7 @@ services:
       - "8000"
     volumes:
       - api_data:/data
+      - "//srv12r2-dc-adfs/gcsdocuments/ALL JOBS JSON/jobs:/mnt/all_jobs_json/jobs"
     healthcheck:
       # api image has Python; stdlib HTTP probe. No host-shell quoting involved.
       test:

@@ -3,139 +3,303 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
-from urllib.request import Request, urlopen
+
 from urllib.error import HTTPError, URLError
+from urllib.request import Request, urlopen
 
 
-class MondayAPIError(Exception):
+class MondayAPIError(RuntimeError):
     pass
 
 
 @dataclass(frozen=True)
-class MondayJob:
+class MondayColumn:
+    id: str
+    text: str
+
+
+@dataclass(frozen=True)
+class MondayItem:
     id: str
     name: str
-    job_number: str
+    columns: Dict[str, MondayColumn]
+    job_number: str  # REQUIRED by upcoming-jobs
 
 
 class MondayClient:
-    """
-    Minimal Monday GraphQL client using Python stdlib only (no httpx/requests).
-    """
+    def __init__(self, token: str, api_url: str, timeout_seconds: int = 30):
+        self._token = (token or "").strip()
+        self._api_url = (api_url or "").strip()
+        self._timeout = int(timeout_seconds or 30)
 
-    def __init__(self, token: str, api_url: str = "https://api.monday.com/v2", timeout_seconds: int = 30):
-        self.token = (token or "").strip()
-        self.api_url = (api_url or "").strip() or "https://api.monday.com/v2"
-        self.timeout_seconds = int(timeout_seconds or 30)
+        if not self._token:
+            raise MondayAPIError("Missing Monday token")
+        if not self._api_url:
+            raise MondayAPIError("Missing Monday API URL")
 
-        if not self.token:
-            raise MondayAPIError("Missing Monday API token (empty).")
-
-    def graphql(self, query: str, variables: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-        payload = {"query": query, "variables": variables or {}}
+    # -------------------------------------------------
+    # Core request
+    # -------------------------------------------------
+    def _post_graphql(self, query: str) -> Dict[str, Any]:
+        payload = {"query": query}
         body = json.dumps(payload).encode("utf-8")
 
         req = Request(
-            self.api_url,
+            self._api_url,
             data=body,
             headers={
-                "Authorization": self.token,
                 "Content-Type": "application/json",
+                "Authorization": self._token,
             },
             method="POST",
         )
 
         try:
-            with urlopen(req, timeout=self.timeout_seconds) as resp:
+            with urlopen(req, timeout=self._timeout) as resp:
                 raw = resp.read().decode("utf-8", errors="replace")
         except HTTPError as e:
-            msg = ""
             try:
                 msg = e.read().decode("utf-8", errors="replace")
             except Exception:
                 msg = str(e)
-            raise MondayAPIError(f"Monday HTTP {getattr(e, 'code', '?')}: {msg}") from e
+            raise MondayAPIError(f"Monday HTTP {getattr(e, 'code', '?')}: {msg}")
         except URLError as e:
-            raise MondayAPIError(f"Monday network error: {e}") from e
+            raise MondayAPIError(f"Monday network error: {e}")
         except Exception as e:
-            raise MondayAPIError(f"Monday request failed: {e}") from e
+            raise MondayAPIError(f"Monday request failed: {e}")
 
         try:
-            data = json.loads(raw)
-        except Exception as e:
-            raise MondayAPIError(f"Monday response not JSON: {e}. Body: {raw[:200]}") from e
+            data = json.loads(raw) if raw else {}
+        except Exception:
+            raise MondayAPIError(f"Monday returned non-JSON response: {raw[:500]}")
 
-        if isinstance(data, dict) and data.get("errors"):
-            msgs: List[str] = []
-            for err in data.get("errors", []):
-                if isinstance(err, dict):
-                    msgs.append(err.get("message") or str(err))
-                else:
-                    msgs.append(str(err))
-            raise MondayAPIError("Monday GraphQL error: " + " | ".join(msgs))
+        if data.get("errors"):
+            raise MondayAPIError(f"Monday GraphQL error: {data['errors']}")
 
-        return data
+        return data.get("data") or {}
 
-    def list_board_jobs_basic(self, board_id: int, job_column_id: str, limit: int = 50) -> List[MondayJob]:
-        board_id = int(board_id)
-        job_column_id = (job_column_id or "").strip()
-        limit = int(limit or 50)
+    # -------------------------------------------------
+    # Used by upcoming-jobs
+    # -------------------------------------------------
+    def list_board_jobs_basic(
+        self,
+        board_id: int,
+        job_column_id: str,
+        limit: int = 200,
+    ) -> List[MondayItem]:
 
-        if not job_column_id:
-            return []
-
-        query = """
-        query ($board_id: [ID!], $limit: Int!, $job_col: [String!]) {
-          boards(ids: $board_id) {
-            items_page(limit: $limit) {
-              items {
+        query = f"""
+        query {{
+          boards(ids: {int(board_id)}) {{
+            items_page(limit: {int(limit)}) {{
+              items {{
                 id
                 name
-                column_values(ids: $job_col) {
+                column_values(ids: [{json.dumps(job_column_id)}]) {{
                   id
                   text
-                  value
-                }
-              }
-            }
-          }
-        }
+
+                  ... on MirrorValue {{
+                    display_value
+                  }}
+                }}
+              }}
+            }}
+          }}
+        }}
         """
 
-        data = self.graphql(
-            query,
-            {
-                "board_id": [board_id],
-                "limit": limit,
-                "job_col": [job_column_id],
-            },
-        )
+        data = self._post_graphql(query)
 
-        items: List[Dict[str, Any]] = []
-        try:
-            boards = data.get("data", {}).get("boards") or []
-            if boards:
-                items = (boards[0].get("items_page") or {}).get("items") or []
-        except Exception:
-            items = []
+        boards = data.get("boards") or []
+        if not boards:
+            return []
 
-        out: List[MondayJob] = []
+        items_page = (boards[0] or {}).get("items_page") or {}
+        items = items_page.get("items") or []
+
+        out: List[MondayItem] = []
+
         for it in items:
-            if not isinstance(it, dict):
-                continue
-            item_id = str(it.get("id") or "").strip()
-            name = str(it.get("name") or "").strip()
+            item_id = str(it.get("id") or "")
+            name = str(it.get("name") or "")
+            cols_list = it.get("column_values") or []
 
             job_number = ""
-            cols = it.get("column_values") or []
-            if isinstance(cols, list) and cols:
-                c0 = cols[0]
-                if isinstance(c0, dict):
-                    job_number = str(c0.get("text") or "").strip()
+            cols: Dict[str, MondayColumn] = {}
 
-            if not item_id:
-                continue
+            for c in cols_list:
+                cid = str(c.get("id") or "")
+                text = str(c.get("text") or "")
+                display = str(c.get("display_value") or "")
 
-            out.append(MondayJob(id=item_id, name=name, job_number=job_number))
+                value = display if display else text
+
+                cols[cid] = MondayColumn(id=cid, text=value)
+                job_number = value
+
+            if item_id:
+                out.append(
+                    MondayItem(
+                        id=item_id,
+                        name=name,
+                        columns=cols,
+                        job_number=job_number,
+                    )
+                )
+
+        return out
+
+    # -------------------------------------------------
+    # Used by master-json bulk sync
+    # -------------------------------------------------
+    def list_board_items_columns(
+        self,
+        board_id: int,
+        column_ids: List[str],
+        limit: int = 500,
+    ) -> List[MondayItem]:
+
+        ids = [c.strip() for c in column_ids if c.strip()]
+        ids_json = json.dumps(ids)
+
+        query = f"""
+        query {{
+          boards(ids: {int(board_id)}) {{
+            items_page(limit: {int(limit)}) {{
+              items {{
+                id
+                name
+                column_values(ids: {ids_json}) {{
+                  id
+                  text
+                }}
+              }}
+            }}
+          }}
+        }}
+        """
+
+        data = self._post_graphql(query)
+
+        boards = data.get("boards") or []
+        if not boards:
+            return []
+
+        items_page = (boards[0] or {}).get("items_page") or {}
+        items = items_page.get("items") or []
+
+        out: List[MondayItem] = []
+
+        for it in items:
+            item_id = str(it.get("id") or "")
+            name = str(it.get("name") or "")
+            cols_list = it.get("column_values") or []
+            cols: Dict[str, MondayColumn] = {}
+
+            for c in cols_list:
+                cid = str(c.get("id") or "")
+                text = str(c.get("text") or "")
+                cols[cid] = MondayColumn(id=cid, text=text)
+
+            if item_id:
+                out.append(
+                    MondayItem(
+                        id=item_id,
+                        name=name,
+                        columns=cols,
+                        job_number="",
+                    )
+                )
+
+        return out
+
+    # -------------------------------------------------
+    # Used by debug + master-json
+    # -------------------------------------------------
+    def get_item_basic(self, item_id: str) -> Dict[str, Any]:
+        iid = str(item_id).strip()
+
+        query = f"""
+        query {{
+          items(ids: [{json.dumps(iid)}]) {{
+            id
+            name
+            board {{ id }}
+          }}
+        }}
+        """
+
+        data = self._post_graphql(query)
+        items = data.get("items") or []
+        if not items:
+            raise MondayAPIError(f"Item not found: {iid}")
+
+        it = items[0] or {}
+        board = it.get("board") or {}
+
+        return {
+            "id": str(it.get("id") or ""),
+            "name": it.get("name") or "",
+            "board_id": str(board.get("id") or ""),
+        }
+
+    def get_item_all_column_values(self, item_id: str) -> Dict[str, Dict[str, Any]]:
+        iid = str(item_id).strip()
+
+        query = f"""
+        query {{
+          items(ids: [{json.dumps(iid)}]) {{
+            id
+            column_values {{
+              id
+              type
+              text
+              value
+
+              ... on BoardRelationValue {{
+                linked_item_ids
+                linked_items {{
+                  id
+                  name
+                  board {{ id }}
+                }}
+              }}
+
+              ... on MirrorValue {{
+                display_value
+              }}
+            }}
+          }}
+        }}
+        """
+
+        data = self._post_graphql(query)
+        items = data.get("items") or []
+        if not items:
+            raise MondayAPIError(f"Item not found: {iid}")
+
+        cols_list = (items[0] or {}).get("column_values") or []
+        out: Dict[str, Dict[str, Any]] = {}
+
+        for c in cols_list:
+            cid = str(c.get("id") or "")
+            entry = {
+                "id": cid,
+                "type": c.get("type") or "",
+                "text": str(c.get("text") or ""),
+                "value": str(c.get("value") or ""),
+            }
+
+            if "display_value" in c:
+                entry["display_value"] = str(c.get("display_value") or "")
+
+            if "linked_item_ids" in c:
+                entry["linked_item_ids"] = c.get("linked_item_ids") or []
+
+            if "linked_items" in c:
+                entry["linked_items"] = c.get("linked_items") or []
+
+            out[cid] = entry
 
         return out

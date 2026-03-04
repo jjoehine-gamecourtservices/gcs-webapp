@@ -12,12 +12,16 @@
 html, body {
   margin: 0;
   height: 100%;
+  width: 100%;
   background: var(--bg);
   color: var(--text);
   font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+
+  /* Prevent any horizontal overflow from creating gutter artifacts */
+  overflow-x: hidden;
 }
 
-/* Global scrollbar styling: remove white track and keep it subtle */
+/* Global scrollbar styling: remove track and keep it subtle */
 * {
   scrollbar-width: thin;                /* Firefox */
   scrollbar-color: rgba(255,255,255,0.22) transparent;
@@ -44,6 +48,38 @@ html, body {
 }
 
 *::-webkit-scrollbar-thumb:hover {
+  background: rgba(255,255,255,0.28);
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+
+/* IMPORTANT: explicitly style root scrollbars (Chromium can ignore the universal selector here) */
+html::-webkit-scrollbar,
+body::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+html::-webkit-scrollbar-track,
+body::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+html::-webkit-scrollbar-corner,
+body::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+html::-webkit-scrollbar-thumb,
+body::-webkit-scrollbar-thumb {
+  background: rgba(255,255,255,0.18);
+  border: 2px solid transparent;
+  background-clip: content-box;
+  border-radius: 999px;
+}
+
+html::-webkit-scrollbar-thumb:hover,
+body::-webkit-scrollbar-thumb:hover {
   background: rgba(255,255,255,0.28);
   border: 2px solid transparent;
   background-clip: content-box;

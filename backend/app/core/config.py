@@ -1,6 +1,9 @@
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from __future__ import annotations
+
+from typing import List, Optional
+
 from pydantic import Field
-from typing import List
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -31,6 +34,16 @@ class Settings(BaseSettings):
     MONDAY_BOARD_ID: int = Field(default=0)
     MONDAY_JOB_COLUMN_ID: str = Field(default="")  # e.g. job_____1
     MONDAY_UPCOMING_LIMIT: int = Field(default=50)
+
+    # File Gateway (Windows host service)
+    # Example:
+    #   GCS_FILE_GATEWAY_URL=http://host.docker.internal:8787
+    #   GCS_FILE_GATEWAY_TOKEN=...
+    FILE_GATEWAY_URL: Optional[str] = Field(default=None)
+    FILE_GATEWAY_TOKEN: Optional[str] = Field(default=None)
+
+    # Background Sync (scheduler auth)
+    CRON_TOKEN: Optional[str] = Field(default=None)
 
 
 settings = Settings()

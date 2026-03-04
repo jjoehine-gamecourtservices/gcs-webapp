@@ -1,3 +1,5 @@
+// frontend/src/pages/jobs/jobs.types.ts
+
 export type JobCardModel = {
   id: string;
 
@@ -23,10 +25,26 @@ export type JobCardModel = {
   endDate?: string;
 };
 
+/**
+ * Keep backward compatibility with the old shape (name/job_number),
+ * but allow the backend’s current camelCase fields too.
+ */
 export type MondayUpcomingJob = {
   id: string;
-  name: string;
-  job_number: string;
+
+  // old (legacy)
+  name?: string;
+  job_number?: string;
+
+  // new (current backend)
+  jobName?: string;
+  jobNumber?: string;
+
+  installer?: string;
+  installerContact?: string;
+
+  startDate?: string | null;
+  endDate?: string | null;
 };
 
 export type MondayUpcomingJobsResponse = {

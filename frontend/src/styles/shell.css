@@ -31,7 +31,7 @@
 
 /* DASHBOARD SHELL */
 .dashRoot {
-  height: 100%;
+  height: 100%;      /* FIX: fill the shell's main area, do NOT force 100vh */
   min-height: 0;
   display: flex;
   flex-direction: column;
@@ -89,11 +89,14 @@
   opacity: 0.95;
 }
 
+/* Main content area now prevents outer scroll and enables inner scroll */
 .dashContent {
+  flex: 1 1 0;        /* fill available space */
   min-height: 0;
   display: flex;
   flex-direction: column;
   gap: 12px;
+  overflow: hidden;   /* outer container hides overflow, inner scroll works */
 }
 
 .dashCard {
