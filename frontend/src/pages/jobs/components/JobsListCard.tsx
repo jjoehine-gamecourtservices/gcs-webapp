@@ -1,10 +1,11 @@
 import React, { useMemo } from "react";
+import { Pin } from "lucide-react";
 import type { JobListItem } from "../state/useJobsAll";
 
 type Props = {
   job: JobListItem;
   onOpen: (jobNumber: string) => void;
-  onPin?: (jobNumber: string) => void; // wiring later
+  onPin?: (jobNumber: string) => void;
 };
 
 function joinNamePhone(name?: string, phone?: string): string {
@@ -14,15 +15,6 @@ function joinNamePhone(name?: string, phone?: string): string {
   if (n && !p) return n;
   if (!n && p) return p;
   return `${n} — ${p}`;
-}
-
-function PinSvg() {
-  // Simple clean “pin” shape, filled, inherits color via currentColor
-  return (
-    <svg className="jobsPinIcon" viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M14.5 2c-.4 0-.8.2-1 .6l-1.3 2.4c-.2.4-.1.9.2 1.2l1.6 1.6-4.9 4.9-1.6-1.6c-.3-.3-.8-.4-1.2-.2L3.9 13.2c-.7.4-.7 1.4 0 1.8l3.6 2.1L11 20.7c.4.7 1.4.7 1.8 0l1.3-2.4c.2-.4.1-.9-.2-1.2l-1.6-1.6 4.9-4.9 1.6 1.6c.3.3.8.4 1.2.2l2.4-1.3c.7-.4.7-1.4 0-1.8l-3.6-2.1L15.3 3.6c-.2-.4-.5-.6-.8-.6z" />
-    </svg>
-  );
 }
 
 export default function JobsListCard({ job, onOpen, onPin }: Props) {
@@ -80,7 +72,7 @@ export default function JobsListCard({ job, onOpen, onPin }: Props) {
       aria-label="Open job"
     >
       <div className="jobsListCard">
-        {/* Header row */}
+        {/* Header */}
         <div
           style={{
             display: "grid",
@@ -91,17 +83,34 @@ export default function JobsListCard({ job, onOpen, onPin }: Props) {
           }}
         >
           <div style={{ minWidth: 0 }}>
-            {titleLine ? <div style={{ fontWeight: 950, fontSize: 14, marginBottom: 4 }}>{titleLine}</div> : null}
-            {addressLine ? <div style={{ fontSize: 12, opacity: 0.85 }}>{addressLine}</div> : null}
+            {titleLine && (
+              <div style={{ fontWeight: 950, fontSize: 14, marginBottom: 4 }}>
+                {titleLine}
+              </div>
+            )}
+
+            {addressLine && (
+              <div style={{ fontSize: 12, opacity: 0.85 }}>
+                {addressLine}
+              </div>
+            )}
           </div>
 
-          {job.pssInstallDate ? <div style={pillStyle}>{job.pssInstallDate}</div> : null}
+          {job.pssInstallDate && (
+            <div style={pillStyle}>{job.pssInstallDate}</div>
+          )}
         </div>
 
         {/* Divider */}
-        <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid rgba(255,255,255,0.10)" }} />
+        <div
+          style={{
+            marginTop: 12,
+            paddingTop: 12,
+            borderTop: "1px solid rgba(255,255,255,0.10)",
+          }}
+        />
 
-        {/* Body: 3 columns */}
+        {/* Body */}
         <div
           style={{
             marginTop: 0,
@@ -110,14 +119,14 @@ export default function JobsListCard({ job, onOpen, onPin }: Props) {
             gap: 14,
           }}
         >
-          {/* Left */}
+          {/* Left column */}
           <div style={{ display: "grid", gap: 10 }}>
             <LabelInline label="GC" value={left1} />
             <LabelInline label="GCPM" value={left2} />
             <LabelInline label="Contract" value={left3 || "—"} />
           </div>
 
-          {/* Right */}
+          {/* Right column */}
           <div style={{ display: "grid", gap: 10 }}>
             <LabelInline label="Super" value={right1} />
             <LabelInline label="PM" value={right2} />
@@ -128,9 +137,22 @@ export default function JobsListCard({ job, onOpen, onPin }: Props) {
             </div>
           </div>
 
-          {/* Scope */}
-          <div style={{ borderLeft: "1px solid rgba(255,255,255,0.10)", paddingLeft: 14, minWidth: 0 }}>
-            <div style={{ fontWeight: 950, fontSize: 12, marginBottom: 8, color: "rgba(255,255,255,0.92)" }}>
+          {/* Scope column */}
+          <div
+            style={{
+              borderLeft: "1px solid rgba(255,255,255,0.10)",
+              paddingLeft: 14,
+              minWidth: 0,
+            }}
+          >
+            <div
+              style={{
+                fontWeight: 950,
+                fontSize: 12,
+                marginBottom: 8,
+                color: "rgba(255,255,255,0.92)",
+              }}
+            >
               Scope:
             </div>
 
@@ -167,7 +189,7 @@ export default function JobsListCard({ job, onOpen, onPin }: Props) {
               else console.log("pin", job.jobNumber);
             }}
           >
-            <PinSvg />
+            <Pin size={18} strokeWidth={2} />
           </button>
         </div>
       </div>
