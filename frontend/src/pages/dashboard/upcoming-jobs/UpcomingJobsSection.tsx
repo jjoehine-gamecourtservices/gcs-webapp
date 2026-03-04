@@ -23,25 +23,30 @@ export default function UpcomingJobsSection({ onViewAllJobs, onOpenJobOverview }
 
   const top10 = useMemo(() => filtered.slice(0, 10), [filtered]);
 
+  // Controls how much "air" you see below the last card when scrolled to bottom.
   const bottomBufferPx = 14;
 
   return (
     <div
-      className="dashCard dashCardFlex upcomingJobsCard"
+      className="dashCard dashCardFlex"
       style={{
         display: "flex",
         flexDirection: "column",
         minHeight: 0,
-        overflowY: "auto",
-        overflowX: "hidden",
+
+        // IMPORTANT: card is NOT the scroll container anymore
+        overflow: "hidden",
+
+        // keep header flush to the top like before
         padding: 0,
       }}
     >
+      {/* Header: keep the glass look */}
       <div
         className="dashCardHead"
         style={{
-          position: "sticky",
-          top: 0,
+          flex: "0 0 auto",
+          position: "relative",
           zIndex: 10,
           background: "rgba(16, 26, 51, 0.72)",
           backdropFilter: "blur(10px)",
@@ -73,10 +78,19 @@ export default function UpcomingJobsSection({ onViewAllJobs, onOpenJobOverview }
         </div>
       </div>
 
+      {/* Scrollable body ONLY (so scrollbar starts below header) */}
       <div
         style={{
           flex: "1 1 auto",
           minHeight: 0,
+
+          overflowY: "auto",
+          overflowX: "hidden",
+
+          // Inset the scrollbar off the card edge (moves the scroll container left)
+          marginRight: 12,
+
+          // Keep content aligned with header padding
           paddingLeft: 14,
           paddingRight: 14,
           paddingTop: 12,

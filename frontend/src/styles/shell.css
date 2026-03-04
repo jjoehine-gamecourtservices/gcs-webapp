@@ -54,7 +54,7 @@
   border-radius: 16px;
   background: rgba(16, 26, 51, 0.72);
   backdrop-filter: blur(10px);
-  box-shadow: 0 16px 60px rgba(0, 0, 0, 0.35);
+  box-shadow: none;
 }
 
 .dashSidebar {
