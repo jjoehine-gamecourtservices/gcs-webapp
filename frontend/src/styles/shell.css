@@ -31,7 +31,7 @@
 
 /* DASHBOARD SHELL */
 .dashRoot {
-  height: 100%;      /* FIX: fill the shell's main area, do NOT force 100vh */
+  height: 100%;
   min-height: 0;
   display: flex;
   flex-direction: column;
@@ -91,12 +91,12 @@
 
 /* Main content area now prevents outer scroll and enables inner scroll */
 .dashContent {
-  flex: 1 1 0;        /* fill available space */
+  flex: 1 1 0;
   min-height: 0;
   display: flex;
   flex-direction: column;
   gap: 12px;
-  overflow: hidden;   /* outer container hides overflow, inner scroll works */
+  overflow: hidden;
 }
 
 .dashCard {
@@ -294,4 +294,38 @@
 .dashBtn:hover {
   background: rgba(255,255,255,0.12);
   box-shadow: 0 0 0 3px rgba(120, 160, 255, 0.18);
+}
+
+.jobsRefreshButton,
+.jobsActionButton {
+  color: rgba(255,255,255,0.92);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.jobsRefreshButton:disabled {
+  opacity: 0.85;
+}
+
+.jobsActionButton {
+  cursor: pointer;
+}
+
+.jobsRefreshSpinner {
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  border: 2px solid rgba(255,255,255,0.25);
+  border-top-color: rgba(255,255,255,0.92);
+  animation: jobs-spin 0.8s linear infinite;
+}
+
+@keyframes jobs-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }

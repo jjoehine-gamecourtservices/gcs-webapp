@@ -33,7 +33,9 @@ COLUMN_MAP: Dict[str, str] = {
     "pss_install_date": "lookup_mktsdhsc",
     "gc": "gc__1",
     "gc_office_phone": "phone__1",
+    "gc_address": "location_1__1",
     "architect": "text__1",
+    "architect_address": "location2__1",
     "architect_phone": "phone5__1",
     "super": "connect_boards7__1",
     "super_phone": "mirror13__1",
@@ -43,11 +45,22 @@ COLUMN_MAP: Dict[str, str] = {
     "asst_gc_pm_phone": "mirror82__1",  # mirror is NOT trusted in sync; overridden via contact lookup
     "pm": "people__1",  # GCS internal PM (People column; uses .text which is the display name)
     "total_contract": "formula__1",
+    "safety_checks": "badging_bkgrd_checks6__1",
+    "retainage": "numbers02__1",
+    "tax_exempt": "dropdown_mksn5mrb",
+    "pm_mgmt_software": "dropdown1__1",
+    "eom": "check1__1",
+    "orientation": "check7__1",
+    "safety_doc": "checkbox__1",
+    "bg_check_type": "dropdown_Mjj5k7Iu",
+    "safety": "text0__1",
+    "safety_contact": "phone_mm191ag3",
     "ccip_ocip": "color_mknsadts",
     "bond": "color_mknsab9e",
     "certified_payroll": "status_mkn21ht5",
     "billing_software": "dropdown__1",
     "billing_date": "billing_date___1",
+    "contract_log_item": "connect_boards2__1",
 }
 
 # -----------------------------
@@ -78,7 +91,6 @@ def _require_cron_token(x_gcs_cron_token: Optional[str]) -> None:
     """
     expected = (settings.CRON_TOKEN or "").strip()
     if not expected:
-        # Misconfiguration: we explicitly want this set for prod scheduling.
         raise HTTPException(status_code=500, detail="Missing GCS_CRON_TOKEN (settings.CRON_TOKEN)")
 
     provided = (x_gcs_cron_token or "").strip()
@@ -142,6 +154,31 @@ def format_phone(raw: str) -> str:
         return ""
 
     return f"({digits[0:3]}) {digits[3:6]}-{digits[6:10]}"
+
+
+def format_currency(raw: str) -> str:
+    """
+    Normalize numeric values to whole-dollar currency formatting.
+    Examples:
+    - "303283" -> "$303,283"
+    - "303283.00" -> "$303,283"
+    - "$303,283" -> "$303,283"
+    Returns "" if value is blank or not parseable as a number.
+    """
+    s = (raw or "").strip()
+    if not s:
+        return ""
+
+    cleaned = s.replace("$", "").replace(",", "").strip()
+    if not cleaned:
+        return ""
+
+    try:
+        amount = float(cleaned)
+    except Exception:
+        return ""
+
+    return f"${amount:,.0f}"
 
 
 def _safe_parse_json(raw: str) -> Any:
@@ -273,6 +310,11 @@ def _get_contact_cell_phone_formatted(client: MondayClient, contact_item_id: str
     return format_phone(raw)
 
 
+def _get_display_value(all_cols: Dict[str, Any], column_id: str) -> str:
+    col = (all_cols or {}).get(column_id) or {}
+    return str(col.get("display_value") or "").strip()
+
+
 def _build_master_payload_from_item_columns_text(
     *,
     item_name: str,
@@ -283,12 +325,15 @@ def _build_master_payload_from_item_columns_text(
     - item_cols_text[column_id] (already .text)
     - item_name for item_name
 
-    NOTE: board_relation name fields are overridden later using linked_items.
+    NOTE:
+    - board_relation name fields are overridden later using linked_items.
+    - board_relation fields that should store linked item names are overridden later.
+    - mirror/formula columns that need display_value are overridden later using all_cols.
     """
     normalized_name = normalize_item_name(item_name)
     out: Dict[str, str] = {}
 
-    SCALAR_PHONE_FIELDS = {"gc_office_phone", "architect_phone"}
+    SCALAR_PHONE_FIELDS = {"gc_office_phone", "architect_phone", "safety_contact"}
 
     for field_name, column_id in COLUMN_MAP.items():
         if field_name == "item_name":
@@ -306,6 +351,20 @@ def _build_master_payload_from_item_columns_text(
     out["job_number"] = normalize_job_number(raw_job_number)
 
     return out
+
+
+def _apply_display_value_overrides(payload: Dict[str, str], all_cols: Dict[str, Any]) -> None:
+    """
+    Some Monday column types expose the usable value in display_value rather than text.
+    Apply those overrides here after all_cols has been fetched.
+    """
+    pss_install_display = _get_display_value(all_cols, COLUMN_MAP["pss_install_date"])
+    if pss_install_display:
+        payload["pss_install_date"] = pss_install_display
+
+    total_contract_display = _get_display_value(all_cols, COLUMN_MAP["total_contract"])
+    if total_contract_display:
+        payload["total_contract"] = format_currency(total_contract_display)
 
 
 def _sync_master_json_internal(*, limit: int) -> Dict[str, Any]:
@@ -333,14 +392,13 @@ def _sync_master_json_internal(*, limit: int) -> Dict[str, Any]:
     except MondayAPIError as e:
         raise HTTPException(status_code=502, detail=str(e))
 
-    # Relation -> JSON field for the PERSON NAME
     RELATION_NAME_FIELDS: Dict[str, str] = {
         "connect_boards7__1": "super",
         "connect_boards19__1": "gc_pm",
         "connect_boards17__1": "asst_gc_pm",
+        "connect_boards2__1": "contract_log_item",
     }
 
-    # Relation -> JSON field for the PHONE (from contact cell__1)
     RELATION_PHONE_FIELDS: Dict[str, str] = {
         "connect_boards7__1": "super_phone",
         "connect_boards19__1": "gc_pm_phone",
@@ -350,7 +408,6 @@ def _sync_master_json_internal(*, limit: int) -> Dict[str, Any]:
     results: List[Dict[str, Any]] = []
 
     for item in items:
-        # Build scalar payload from bulk .text
         payload = _build_master_payload_from_item_columns_text(
             item_name=item.name,
             item_cols_text={cid: (item.columns.get(cid).text if item.columns.get(cid) else "") for cid in column_ids},
@@ -360,18 +417,17 @@ def _sync_master_json_internal(*, limit: int) -> Dict[str, Any]:
         if not safe_job_number:
             continue
 
-        # Per-item relation lookup once
         try:
             all_cols = client.get_item_all_column_values(item_id=str(item.id))
         except MondayAPIError:
             all_cols = {}
 
-        # Override relation-sourced PERSON NAMES (from linked_items)
+        _apply_display_value_overrides(payload, all_cols)
+
         for relation_col_id, name_field in RELATION_NAME_FIELDS.items():
             relation_col = all_cols.get(relation_col_id) if all_cols else None
             payload[name_field] = _first_linked_item_name(relation_col)
 
-        # Override relation-sourced PHONES (from contact cell__1)
         for relation_col_id, phone_field in RELATION_PHONE_FIELDS.items():
             relation_col = all_cols.get(relation_col_id) if all_cols else None
             contact_id = _first_linked_item_id(relation_col)
@@ -408,9 +464,6 @@ def _run_sync_in_background(limit: int) -> None:
         _SYNC_LOCK.release()
 
 
-# -----------------------------
-# Endpoint: Trigger background sync (FAST)
-# -----------------------------
 @router.post("/master-json/trigger-sync")
 def trigger_sync_master_json(
     background_tasks: BackgroundTasks,
@@ -424,13 +477,10 @@ def trigger_sync_master_json(
     - Runs sync in a background task
     - Prevents overlap with a lock (returns 409 if already running)
     """
-    # Header name needs to be exactly X-GCS-CRON-TOKEN
-    # FastAPI will pass it as x_gcs_cron_token because of convert_underscores=False
     _require_cron_token(x_gcs_cron_token)
 
     limit = _normalize_limit(limit)
 
-    # Non-blocking acquire; if already running, return conflict
     acquired = _SYNC_LOCK.acquire(blocking=False)
     if not acquired:
         raise HTTPException(status_code=409, detail="Sync already running")
@@ -451,9 +501,6 @@ def trigger_sync_master_json(
     }
 
 
-# -----------------------------
-# Endpoint: Sync master JSON (FULL BOARD)
-# -----------------------------
 @router.post("/master-json/sync")
 def sync_master_json(limit: int = 500, _current_user=Depends(get_current_user)):
     """
@@ -468,6 +515,9 @@ def sync_master_json(limit: int = 500, _current_user=Depends(get_current_user)):
       - names from board_relation linked_items[0].name
       - phones from contact cell__1 via linked_item_ids[0]
 
+    Mirror/display fields:
+    - Uses display_value where Monday does not populate text.
+
     limit:
     - Optional query param to batch the run: /master-json/sync?limit=25
     - Defaults to 500 (existing behavior).
@@ -475,9 +525,6 @@ def sync_master_json(limit: int = 500, _current_user=Depends(get_current_user)):
     return _sync_master_json_internal(limit=limit)
 
 
-# -----------------------------
-# Endpoint: Sync ONE item (TEST HARNESS)
-# -----------------------------
 @router.post("/master-json/sync-item/{item_id}")
 def sync_master_json_item(item_id: str, _current_user=Depends(get_current_user)):
     """
@@ -485,7 +532,7 @@ def sync_master_json_item(item_id: str, _current_user=Depends(get_current_user))
 
     Uses:
     - get_item_basic() for item name + board_id validation
-    - get_item_all_column_values() for per-column .text and board_relation linked_item_ids/linked_items
+    - get_item_all_column_values() for per-column .text/display_value and board_relation linked_item_ids/linked_items
     - relation names from linked_items[0].name
     - phones from contact cell__1 (NO mirror dependency)
     - gateway write
@@ -511,7 +558,6 @@ def sync_master_json_item(item_id: str, _current_user=Depends(get_current_user))
     except MondayAPIError as e:
         raise HTTPException(status_code=502, detail=str(e))
 
-    # Build a dict of column_id -> text
     item_cols_text: Dict[str, str] = {}
     for _, cid in COLUMN_MAP.items():
         if cid and cid != "name":
@@ -522,10 +568,13 @@ def sync_master_json_item(item_id: str, _current_user=Depends(get_current_user))
         item_cols_text=item_cols_text,
     )
 
+    _apply_display_value_overrides(payload, all_cols)
+
     RELATION_NAME_FIELDS: Dict[str, str] = {
         "connect_boards7__1": "super",
         "connect_boards19__1": "gc_pm",
         "connect_boards17__1": "asst_gc_pm",
+        "connect_boards2__1": "contract_log_item",
     }
 
     RELATION_PHONE_FIELDS: Dict[str, str] = {
@@ -534,12 +583,10 @@ def sync_master_json_item(item_id: str, _current_user=Depends(get_current_user))
         "connect_boards17__1": "asst_gc_pm_phone",
     }
 
-    # Override relation person names (from linked_items)
     for relation_col_id, name_field in RELATION_NAME_FIELDS.items():
         relation_col = all_cols.get(relation_col_id)
         payload[name_field] = _first_linked_item_name(relation_col)
 
-    # Override relation phones (from contact cell__1)
     for relation_col_id, phone_field in RELATION_PHONE_FIELDS.items():
         relation_col = all_cols.get(relation_col_id)
         contact_id = _first_linked_item_id(relation_col)
@@ -559,19 +606,16 @@ def sync_master_json_item(item_id: str, _current_user=Depends(get_current_user))
     }
 
 
-# -----------------------------
-# TEMP DEBUG ENDPOINT (Phase 1) - Debug one item
-# -----------------------------
 @router.get("/master-json/debug-item/{item_id}")
 def debug_master_json_item(item_id: str, _current_user=Depends(get_current_user)):
     """
     Inspection-only endpoint.
 
-    This endpoint is intentionally "verbose" and shows:
-    - board_relation: linked_item_ids + linked_items (from BoardRelationValue fragment)
-    - mirror: display_value (from MirrorValue fragment)
+    This endpoint is intentionally verbose and shows:
+    - board_relation: linked_item_ids + linked_items
+    - mirror/formula: display_value
 
-    This is the proper way to inspect connected/mirror columns in monday.com.
+    This is the proper way to inspect connected/mirror/formula columns in monday.com.
     """
     client = _monday_client()
 
@@ -580,8 +624,10 @@ def debug_master_json_item(item_id: str, _current_user=Depends(get_current_user)
     except MondayAPIError as e:
         raise HTTPException(status_code=502, detail=str(e))
 
-    # VERIFIED from /debug-board-columns on MASTER board.
     DEBUG_COLS: Dict[str, str] = {
+        "pss_install_date": "lookup_mktsdhsc",
+        "total_contract": "formula__1",
+        "contract_log_item": "connect_boards2__1",
         "super": "connect_boards7__1",
         "super_cell": "mirror13__1",
         "gc_pm": "connect_boards19__1",
@@ -618,12 +664,12 @@ def debug_master_json_item(item_id: str, _current_user=Depends(get_current_user)
             "value_parsed": _safe_parse_json_nullable(raw.get("value")),
         }
 
+        if "display_value" in raw:
+            entry["display_value"] = raw.get("display_value", "")
+
         if col_type == "board_relation":
             entry["linked_item_ids"] = raw.get("linked_item_ids") or []
             entry["linked_items"] = raw.get("linked_items") or []
-
-        if col_type == "mirror":
-            entry["display_value"] = raw.get("display_value", "")
 
         out_cols[label] = entry
 

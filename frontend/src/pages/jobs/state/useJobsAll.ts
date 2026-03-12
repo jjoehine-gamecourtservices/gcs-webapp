@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { apiJson } from "../../../api/api";
 
 export type JobListItem = {
   jobNumber: string;
@@ -14,58 +15,141 @@ export type JobListItem = {
 
   pm: string;
 
-  // This is PSS install date (confirmed)
   pssInstallDate: string;
 
-  // Not wired yet, placeholders for now
-  contractAmount: string; // keep string for now (e.g. "$123,456")
-  scopeLines: string[];   // one-line items
+  contractAmount: string;
+  scopeLines: string[];
 };
+
+type ApiJob = {
+  jobNumber: string;
+  jobName: string;
+  address: string;
+
+  generalContractor: string;
+  gcpm: string;
+  gcpmContact: string;
+
+  super: string;
+  superContact: string;
+
+  pm: string;
+
+  startDate: string;
+  contractAmount: string;
+};
+
+const CACHE_KEY = "gcs_jobs_all_cache_v1";
+const CACHE_DATE_KEY = "gcs_jobs_all_cache_date_v1";
+
+function todayKey(): string {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, "0");
+  const d = String(now.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+function mapApiJobs(apiJobs: ApiJob[]): JobListItem[] {
+  return apiJobs.map((j) => ({
+    jobNumber: j.jobNumber ?? "",
+    jobName: j.jobName ?? "",
+    address: j.address ?? "",
+
+    gc: j.generalContractor ?? "",
+    gcpm: j.gcpm ?? "",
+    gcpmContact: j.gcpmContact ?? "",
+
+    super: j.super ?? "",
+    superContact: j.superContact ?? "",
+
+    pm: j.pm ?? "",
+
+    pssInstallDate: j.startDate ?? "",
+
+    contractAmount: j.contractAmount ?? "",
+    scopeLines: [],
+  }));
+}
+
+function readCache(): JobListItem[] | null {
+  try {
+    const cachedDate = localStorage.getItem(CACHE_DATE_KEY);
+    if (cachedDate !== todayKey()) return null;
+
+    const raw = localStorage.getItem(CACHE_KEY);
+    if (!raw) return null;
+
+    const parsed = JSON.parse(raw) as JobListItem[];
+    if (!Array.isArray(parsed)) return null;
+
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function writeCache(jobs: JobListItem[]): void {
+  try {
+    localStorage.setItem(CACHE_KEY, JSON.stringify(jobs));
+    localStorage.setItem(CACHE_DATE_KEY, todayKey());
+  } catch {
+    // ignore storage failures
+  }
+}
 
 export default function useJobsAll() {
   const [jobs, setJobs] = useState<JobListItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
 
-  useEffect(() => {
-    // TEMP: stub data so UI can be verified (no backend yet)
-    const demo: JobListItem[] = [
-      {
-        jobNumber: "12731",
-        jobName: "Stars Northlake",
-        address: "13850 Chadwick Pkwy, Northlake, TX, USA",
-        gc: "Lee Lewis",
-        gcpm: "Jennifer Norris",
-        gcpmContact: "(214) 837-0414",
-        super: "Adam",
-        superContact: "(512) 555-2211",
-        pm: "Justin Kinsley",
-        pssInstallDate: "02/16/2026",
-        contractAmount: "—",
-        scopeLines: ["—", "—", "—"],
-      },
-      {
-        jobNumber: "12526",
-        jobName: "Hamlin MS - OD",
-        address: "3900 Hamlin Drive, Corpus Christi, TX, USA",
-        gc: "Fulton Construction Corp",
-        gcpm: "Sean Walker",
-        gcpmContact: "(361) 816-2026",
-        super: "—",
-        superContact: "—",
-        pm: "Justin Spraberry",
-        pssInstallDate: "03/02/2026",
-        contractAmount: "—",
-        scopeLines: ["—", "—"],
-      },
-    ];
+  const load = useCallback(async (forceRefresh = false) => {
+    if (!forceRefresh) {
+      const cached = readCache();
+      if (cached) {
+        setJobs(cached);
+        setLoading(false);
+        return;
+      }
+    }
 
-    const t = setTimeout(() => {
-      setJobs(demo);
+    if (forceRefresh) {
+      setRefreshing(true);
+    } else {
+      setLoading(true);
+    }
+
+    try {
+      const r = await apiJson<{ jobs: ApiJob[] }>("/api/jobs", {
+        method: "GET",
+        headers: { Accept: "application/json" },
+      });
+
+      if (!r.ok || !r.data || !Array.isArray(r.data.jobs)) {
+        console.warn("[jobs] failed", r.status);
+        setJobs([]);
+        return;
+      }
+
+      const mapped = mapApiJobs(r.data.jobs);
+      setJobs(mapped);
+      writeCache(mapped);
+    } catch (e) {
+      console.warn("[jobs] exception", e);
+      setJobs([]);
+    } finally {
       setLoading(false);
-    }, 250);
-
-    return () => clearTimeout(t);
+      setRefreshing(false);
+    }
   }, []);
 
-  return { jobs, loading };
+  useEffect(() => {
+    void load(false);
+  }, [load]);
+
+  const reload = useCallback(async () => {
+    await load(true);
+  }, [load]);
+
+  return { jobs, loading, refreshing, reload };
 }

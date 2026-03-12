@@ -1,0 +1,389 @@
+.rentalFormPage {
+  min-height: 100%;
+  overflow: auto;
+  padding: 22px 18px;
+  box-sizing: border-box;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+}
+
+.rentalFormCard {
+  width: min(660px, 100%);
+  border-radius: 18px;
+  border: 1px solid rgba(255,255,255,0.10);
+  background: rgba(16, 26, 51, 0.76);
+  backdrop-filter: blur(10px);
+  overflow: visible;
+}
+
+.rentalFormHeader {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 14px 16px;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+
+.rentalFormTitle {
+  font-weight: 950;
+  font-size: 16px;
+  color: rgba(255,255,255,0.95);
+}
+
+.rentalFormBody {
+  padding: 16px;
+  display: grid;
+  gap: 14px;
+}
+
+.rentalFormPreview {
+  display: grid;
+  gap: 6px;
+  padding: 11px 13px;
+  border-radius: 14px;
+  border: 1px solid rgba(255,255,255,0.10);
+  background: rgba(0,0,0,0.14);
+}
+
+.rentalFormPreviewTitle {
+  font-size: 13px;
+  font-weight: 800;
+  color: rgba(255,255,255,0.94);
+  line-height: 18px;
+  word-break: break-word;
+}
+
+.rentalFormPreviewAddress {
+  font-size: 12px;
+  color: rgba(255,255,255,0.74);
+  line-height: 16px;
+  word-break: break-word;
+}
+
+.rentalFormRow2 {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 12px;
+}
+
+.rentalFormRow3 {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr);
+  gap: 12px;
+}
+
+.rentalFormFieldLabel {
+  font-size: 12px;
+  font-weight: 800;
+  color: rgba(255,255,255,0.82);
+  margin-bottom: 6px;
+}
+
+.rentalFormFieldError {
+  margin-top: 6px;
+  font-size: 12px;
+  color: rgba(255,160,160,0.96);
+  line-height: 16px;
+}
+
+.rentalFormInput {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,0.14);
+  background: rgba(0,0,0,0.18);
+  color: rgba(255,255,255,0.94);
+  outline: none;
+  font-size: 14px;
+}
+
+.rentalFormInputError {
+  border-color: rgba(255,160,160,0.75);
+}
+
+.rentalFormDateInput {
+  color-scheme: dark;
+}
+
+.rentalFormDateInput::-webkit-calendar-picker-indicator {
+  filter: brightness(0) invert(1);
+  opacity: 1;
+  cursor: pointer;
+}
+
+.rentalFormBudgetWrap {
+  width: 12.5%;
+  min-width: 120px;
+  max-width: 150px;
+}
+
+.rentalFormPhonePreview {
+  margin-top: 6px;
+  font-size: 12px;
+  color: rgba(255,255,255,0.72);
+  line-height: 16px;
+  min-height: 16px;
+}
+
+.rentalFormActions {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 2px;
+}
+
+.rentalFormMessage {
+  font-size: 12px;
+  color: rgba(255,255,255,0.76);
+  line-height: 16px;
+}
+
+.rentalFormRefreshButton {
+  color: rgba(255,255,255,0.92);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.rentalFormRefreshButton:disabled {
+  opacity: 0.85;
+}
+
+.rentalFormRefreshSpinner {
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  border: 2px solid rgba(255,255,255,0.25);
+  border-top-color: rgba(255,255,255,0.92);
+  animation: rentalform-spin 0.8s linear infinite;
+}
+
+@keyframes rentalform-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.rentalFormDropdownWrap {
+  position: relative;
+  min-width: 0;
+}
+
+.rentalFormDropdownControl {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.rentalFormDropdownButtons {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.rentalFormDropdownToggle,
+.rentalFormDropdownManage {
+  border: 1px solid rgba(255,255,255,0.14);
+  background: rgba(255,255,255,0.06);
+  color: rgba(255,255,255,0.92);
+  border-radius: 12px;
+  width: 40px;
+  height: 40px;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 14px;
+}
+
+.rentalFormDropdownManage {
+  font-size: 16px;
+}
+
+.rentalFormDropdownMenu {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  right: 0;
+  z-index: 100;
+  border-radius: 14px;
+  border: 1px solid rgba(255,255,255,0.10);
+  background: rgba(16, 26, 51, 0.98);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 18px 40px rgba(0,0,0,0.28);
+  overflow: hidden;
+  max-height: 280px;
+  overflow-y: auto;
+}
+
+.rentalFormDropdownEmpty {
+  padding: 10px;
+  font-size: 13px;
+  color: rgba(255,255,255,0.72);
+}
+
+.rentalFormDropdownOption {
+  border: none;
+  background: transparent;
+  color: rgba(255,255,255,0.94);
+  text-align: left;
+  padding: 10px 12px;
+  cursor: pointer;
+  display: grid;
+  gap: 3px;
+  width: 100%;
+}
+
+.rentalFormDropdownOptionLabel {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.rentalFormDropdownOptionMeta {
+  font-size: 12px;
+  color: rgba(255,255,255,0.68);
+}
+
+.rentalFormMultiOption {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  padding: 10px 12px;
+  cursor: pointer;
+  color: rgba(255,255,255,0.94);
+}
+
+.rentalFormPills {
+  margin-top: 8px;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.rentalFormPill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,0.16);
+  background: rgba(255,255,255,0.08);
+  color: rgba(255,255,255,0.92);
+  font-size: 12px;
+  line-height: 12px;
+  min-height: 24px;
+}
+
+.rentalFormPillRemove {
+  border: none;
+  background: transparent;
+  color: rgba(255,255,255,0.75);
+  cursor: pointer;
+  padding: 0;
+  font-size: 12px;
+  line-height: 12px;
+}
+
+.rentalFormManageOverlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.46);
+  display: grid;
+  place-items: center;
+  z-index: 1200;
+  padding: 20px;
+}
+
+.rentalFormManageModal {
+  width: min(520px, 100%);
+  border-radius: 18px;
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(16, 26, 51, 0.97);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 24px 60px rgba(0,0,0,0.35);
+  padding: 16px;
+  display: grid;
+  gap: 14px;
+}
+
+.rentalFormManageHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.rentalFormManageTitle {
+  font-size: 16px;
+  font-weight: 950;
+  color: rgba(255,255,255,0.95);
+}
+
+.rentalFormManageList {
+  display: grid;
+  gap: 8px;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.rentalFormManageRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 8px;
+  align-items: center;
+  padding: 10px 12px;
+  border: 1px solid rgba(255,255,255,0.10);
+  border-radius: 12px;
+  background: rgba(255,255,255,0.04);
+}
+
+.rentalFormManageName {
+  font-size: 13px;
+  color: rgba(255,255,255,0.94);
+  line-height: 16px;
+  word-break: break-word;
+}
+
+.rentalFormManageMiniBtn {
+  border: 1px solid rgba(255,255,255,0.14);
+  background: rgba(255,255,255,0.06);
+  color: rgba(255,255,255,0.92);
+  border-radius: 10px;
+  min-width: 64px;
+  height: 32px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 800;
+  padding: 0 10px;
+}
+
+.rentalFormManageAddRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
+@media (max-width: 900px) {
+  .rentalFormCard {
+    width: min(760px, 100%);
+  }
+
+  .rentalFormRow3 {
+    grid-template-columns: 1fr;
+  }
+
+  .rentalFormRow2 {
+    grid-template-columns: 1fr;
+  }
+
+  .rentalFormBudgetWrap {
+    width: 100%;
+    max-width: none;
+  }
+}

@@ -1,0 +1,48 @@
+.tasksWorkspace {
+  display: grid;
+  gap: 18px;
+}
+
+.tasksTile {
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+
+  border-radius: 16px;
+  padding: 16px;
+
+  border: 1px solid rgba(255,255,255,0.12);
+  background: #1a2745;
+
+  color: rgba(255,255,255,0.95);   /* force white text */
+
+  transition: transform 120ms ease, box-shadow 120ms ease, border-color 120ms ease;
+}
+
+.tasksTile:hover {
+  transform: translateY(-1px);
+  border-color: rgba(255,255,255,0.18);
+  box-shadow: 0 8px 20px rgba(0,0,0,0.35);
+}
+
+.tasksTileIconArea {
+  border-radius: 12px;
+  padding: 16px;
+
+  display: grid;
+  place-items: center;
+
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.10);
+}
+
+.tasksTileIcon {
+  opacity: 0.85;
+  color: rgba(255,255,255,0.9); /* ensure icon stroke stays white */
+}
+
+.tasksTileTitle {
+  font-weight: 700;
+  font-size: 14px;
+  color: rgba(255,255,255,0.95); /* explicit so no inheritance bugs */
+}

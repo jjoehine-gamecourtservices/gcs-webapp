@@ -1,86 +1,94 @@
-import React from "react";
-import useJobsAll from "../../state/useJobsAll";
-import JobsListCard from "../../components/JobsListCard";
+import React, { useMemo } from "react";
+import useJobsAll, { type JobListItem } from "../../state/useJobsAll";
+import useJobPrefs from "../../state/useJobPrefs";
+import AllJobsSection from "./AllJobsSection";
+import AllJobsPinnedSection from "./AllJobsPinnedSection";
+import AllJobsRecentSection from "./AllJobsRecentSection";
 
 type Props = {
   onOpenOverview: (jobId: string) => void;
 };
 
-export default function JobsAllPage({ onOpenOverview }: Props) {
-  const { jobs, loading } = useJobsAll();
+function isJobListItem(job: JobListItem | undefined): job is JobListItem {
+  return Boolean(job);
+}
 
-  const hasRecent = false; // wiring later
+export default function JobsAllPage({ onOpenOverview }: Props) {
+  const { jobs, loading, refreshing, reload } = useJobsAll();
+
+  const {
+    loading: prefsLoading,
+    recentJobNumbers,
+    pinnedJobNumbers,
+    addRecent,
+    removeRecent,
+    pinJob,
+    unpinJob,
+    movePinnedUp,
+    movePinnedDown,
+  } = useJobPrefs();
+
+  const jobsByNumber = useMemo(() => {
+    const map = new Map<string, JobListItem>();
+
+    for (const job of jobs) {
+      if (job?.jobNumber) {
+        map.set(job.jobNumber, job);
+      }
+    }
+
+    return map;
+  }, [jobs]);
+
+  const recentJobs = useMemo(() => {
+    return recentJobNumbers
+      .map((jobNumber) => jobsByNumber.get(jobNumber))
+      .filter(isJobListItem);
+  }, [recentJobNumbers, jobsByNumber]);
+
+  const pinnedJobs = useMemo(() => {
+    return pinnedJobNumbers
+      .map((jobNumber) => jobsByNumber.get(jobNumber))
+      .filter(isJobListItem);
+  }, [pinnedJobNumbers, jobsByNumber]);
+
+  const bottomBufferPx = 14;
+
+  function openJob(jobNumber: string) {
+    addRecent(jobNumber);
+    onOpenOverview(jobNumber);
+  }
 
   return (
     <div className="jobsPageRoot" aria-label="Jobs Page">
-      {/* RECENT JOBS (full width) */}
-      <section className="dashCard jobsSection" aria-label="Recent Jobs">
-        <div className="dashCardHead">
-          <div>
-            <div className="dashCardTitle">Recent Jobs</div>
-            <div className="dashMuted">Open a job to see it here</div>
-          </div>
-        </div>
+      <AllJobsRecentSection
+        recentJobs={recentJobs}
+        prefsLoading={prefsLoading}
+        onOpen={openJob}
+        onRemove={removeRecent}
+        onPin={pinJob}
+      />
 
-        <div className="jobsRecentScrollTop" role="region" aria-label="Recent Jobs Scroller">
-          <div className="jobsRecentInner">
-            {hasRecent ? null : (
-              <div className="jobsRecentEmptyTile">
-                <div className="dashMuted">No recent jobs yet.</div>
-              </div>
-            )}
-          </div>
-        </div>
-      </section>
-
-      {/* PINNED + JOB LIST */}
       <div className="jobsGrid" aria-label="Pinned and Jobs List">
-        {/* PINNED JOBS */}
-        <section className="dashCard dashCardFlex jobsSection" aria-label="Pinned Jobs">
-          <div className="dashCardHead">
-            <div>
-              <div className="dashCardTitle">Pinned Jobs</div>
-              <div className="dashMuted">Add jobs to your pin list</div>
-            </div>
-          </div>
+        <AllJobsPinnedSection
+          pinnedJobs={pinnedJobs}
+          prefsLoading={prefsLoading}
+          bottomBufferPx={bottomBufferPx}
+          onOpen={openJob}
+          onUnpin={unpinJob}
+          onMoveUp={movePinnedUp}
+          onMoveDown={movePinnedDown}
+        />
 
-          <div className="jobsScrollY jobsScrollYHover" role="region" aria-label="Pinned Jobs List">
-            <div className="dashMuted" style={{ padding: 12 }}>
-              No pinned jobs yet.
-            </div>
-          </div>
-        </section>
-
-        {/* JOBS LIST */}
-        <section className="dashCard dashCardFlex jobsSection" aria-label="Jobs List">
-          <div className="dashCardHead">
-            <div>
-              <div className="dashCardTitle">Jobs</div>
-              <div className="dashMuted">All jobs</div>
-            </div>
-
-            <div className="dashFilters">
-              <input className="dashInput" placeholder="Search job or number" type="text" />
-              <select className="dashSelect" disabled>
-                <option>Filters (soon)</option>
-              </select>
-            </div>
-          </div>
-
-          <div className="jobsScrollY jobsScrollYHover" role="region" aria-label="All Jobs List">
-            {loading ? (
-              <div className="dashMuted" style={{ padding: 12 }}>
-                Loading jobs...
-              </div>
-            ) : (
-              <div className="jobsListStack">
-                {jobs.map((j) => (
-                  <JobsListCard key={j.jobNumber} job={j} onOpen={onOpenOverview} />
-                ))}
-              </div>
-            )}
-          </div>
-        </section>
+        <AllJobsSection
+          jobs={jobs}
+          loading={loading}
+          refreshing={refreshing}
+          reload={reload}
+          bottomBufferPx={bottomBufferPx}
+          onOpen={openJob}
+          onPin={pinJob}
+        />
       </div>
     </div>
   );

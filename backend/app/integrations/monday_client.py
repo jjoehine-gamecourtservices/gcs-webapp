@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
@@ -50,6 +50,7 @@ class MondayClient:
             headers={
                 "Content-Type": "application/json",
                 "Authorization": self._token,
+                "API-Version": "2025-01",
             },
             method="POST",
         )
@@ -87,7 +88,6 @@ class MondayClient:
         job_column_id: str,
         limit: int = 200,
     ) -> List[MondayItem]:
-
         query = f"""
         query {{
           boards(ids: {int(board_id)}) {{
@@ -100,6 +100,10 @@ class MondayClient:
                   text
 
                   ... on MirrorValue {{
+                    display_value
+                  }}
+
+                  ... on FormulaValue {{
                     display_value
                   }}
                 }}
@@ -159,7 +163,6 @@ class MondayClient:
         column_ids: List[str],
         limit: int = 500,
     ) -> List[MondayItem]:
-
         ids = [c.strip() for c in column_ids if c.strip()]
         ids_json = json.dumps(ids)
 
@@ -173,6 +176,14 @@ class MondayClient:
                 column_values(ids: {ids_json}) {{
                   id
                   text
+
+                  ... on MirrorValue {{
+                    display_value
+                  }}
+
+                  ... on FormulaValue {{
+                    display_value
+                  }}
                 }}
               }}
             }}
@@ -200,7 +211,11 @@ class MondayClient:
             for c in cols_list:
                 cid = str(c.get("id") or "")
                 text = str(c.get("text") or "")
-                cols[cid] = MondayColumn(id=cid, text=text)
+                display = str(c.get("display_value") or "")
+
+                value = display if display else text
+
+                cols[cid] = MondayColumn(id=cid, text=value)
 
             if item_id:
                 out.append(
@@ -211,6 +226,49 @@ class MondayClient:
                         job_number="",
                     )
                 )
+
+        return out
+
+    def list_board_items_basic(
+        self,
+        board_id: int,
+        limit: int = 1000,
+    ) -> List[Dict[str, str]]:
+        query = f"""
+        query {{
+          boards(ids: {int(board_id)}) {{
+            items_page(limit: {int(limit)}) {{
+              items {{
+                id
+                name
+              }}
+            }}
+          }}
+        }}
+        """
+
+        data = self._post_graphql(query)
+
+        boards = data.get("boards") or []
+        if not boards:
+            return []
+
+        items_page = (boards[0] or {}).get("items_page") or {}
+        items = items_page.get("items") or []
+
+        out: List[Dict[str, str]] = []
+
+        for it in items:
+            item_id = str(it.get("id") or "").strip()
+            name = str(it.get("name") or "").strip()
+            if not item_id or not name:
+                continue
+            out.append(
+                {
+                    "id": item_id,
+                    "name": name,
+                }
+            )
 
         return out
 
@@ -269,6 +327,10 @@ class MondayClient:
               ... on MirrorValue {{
                 display_value
               }}
+
+              ... on FormulaValue {{
+                display_value
+              }}
             }}
           }}
         }}
@@ -303,3 +365,91 @@ class MondayClient:
             out[cid] = entry
 
         return out
+
+    # -------------------------------------------------
+    # Mutations
+    # -------------------------------------------------
+    def change_simple_column_value(
+        self,
+        *,
+        board_id: int,
+        item_id: str,
+        column_id: str,
+        value: str,
+    ) -> str:
+        iid = str(item_id).strip()
+        cid = str(column_id).strip()
+        val = str(value)
+
+        query = f"""
+        mutation {{
+          change_simple_column_value(
+            item_id: {json.dumps(iid)},
+            board_id: {int(board_id)},
+            column_id: {json.dumps(cid)},
+            value: {json.dumps(val)}
+          ) {{
+            id
+          }}
+        }}
+        """
+
+        data = self._post_graphql(query)
+        changed = data.get("change_simple_column_value") or {}
+        changed_id = str(changed.get("id") or "")
+        if not changed_id:
+            raise MondayAPIError("Monday did not return an item id for change_simple_column_value")
+        return changed_id
+
+    def change_item_name(
+        self,
+        *,
+        board_id: int,
+        item_id: str,
+        new_name: str,
+    ) -> str:
+        return self.change_simple_column_value(
+            board_id=board_id,
+            item_id=item_id,
+            column_id="name",
+            value=new_name,
+        )
+
+    def create_item(
+        self,
+        *,
+        board_id: int,
+        group_id: str,
+        item_name: str,
+        column_values: Dict[str, Any] | None = None,
+        create_labels_if_missing: bool = False,
+    ) -> str:
+        group = str(group_id).strip()
+        name = str(item_name).strip()
+        if not group:
+            raise MondayAPIError("Missing group_id for create_item")
+        if not name:
+            raise MondayAPIError("Missing item_name for create_item")
+
+        column_values_json = json.dumps(column_values or {}, ensure_ascii=False)
+
+        query = f"""
+        mutation {{
+          create_item(
+            board_id: {int(board_id)},
+            group_id: {json.dumps(group)},
+            item_name: {json.dumps(name)},
+            column_values: {json.dumps(column_values_json)},
+            create_labels_if_missing: {"true" if create_labels_if_missing else "false"}
+          ) {{
+            id
+          }}
+        }}
+        """
+
+        data = self._post_graphql(query)
+        created = data.get("create_item") or {}
+        created_id = str(created.get("id") or "")
+        if not created_id:
+            raise MondayAPIError("Monday did not return an item id for create_item")
+        return created_id

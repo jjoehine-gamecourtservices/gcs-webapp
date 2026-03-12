@@ -1,18 +1,31 @@
-import React from "react";
+import React, { useState } from "react";
+
+import TasksHomePage from "./pages/home/TasksHomePage";
+import RentalsPage from "./pages/rentals/RentalsPage";
+
+type TasksView =
+  | { id: "home" }
+  | { id: "rentals" };
 
 export default function TasksPage() {
-  return (
-    <div className="dashCard">
-      <div className="dashCardHead">
-        <div>
-          <div className="dashCardTitle">Tasks</div>
-          <div className="dashMuted">Not started yet.</div>
-        </div>
-      </div>
+  const [view, setView] = useState<TasksView>({ id: "home" });
 
-      <div style={{ marginTop: 12 }} className="dashMuted">
-        Coming soon.
-      </div>
-    </div>
+  function goHome() {
+    setView({ id: "home" });
+  }
+
+  function openRentals() {
+    setView({ id: "rentals" });
+  }
+
+  if (view.id === "rentals") {
+    return <RentalsPage />;
+  }
+
+  return (
+    <TasksHomePage
+      onOpenRentals={openRentals}
+      onResetTasks={goHome}
+    />
   );
 }

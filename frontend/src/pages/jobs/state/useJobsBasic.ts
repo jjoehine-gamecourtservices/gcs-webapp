@@ -6,6 +6,7 @@ import type { JobCardModel } from "../jobs.types";
 type UseJobsBasicResult = {
   jobs: JobCardModel[];
   loading: boolean;
+  refreshing: boolean;
   error: string | null;
   reload: () => void;
 };
@@ -69,6 +70,7 @@ function safeWriteCache(jobs: JobCardModel[], nowMs: number): void {
 export default function useJobsBasic(): UseJobsBasicResult {
   const [jobs, setJobs] = useState<JobCardModel[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [reloadToken, setReloadToken] = useState(0);
 
@@ -81,8 +83,13 @@ export default function useJobsBasic(): UseJobsBasicResult {
       const nowMs = Date.now();
       const force = reloadToken > 0;
 
-      setLoading(true);
       setError(null);
+
+      if (force) {
+        setRefreshing(true);
+      } else {
+        setLoading(true);
+      }
 
       if (!force) {
         const cached = safeReadCache(nowMs);
@@ -102,11 +109,13 @@ export default function useJobsBasic(): UseJobsBasicResult {
         if (!cancelled) {
           setJobs(mapped);
           setLoading(false);
+          setRefreshing(false);
         }
       } catch (e: any) {
         if (!cancelled) {
           setJobs([]);
           setLoading(false);
+          setRefreshing(false);
           setError(e?.message ? String(e.message) : "Failed to load jobs");
         }
       }
@@ -120,7 +129,7 @@ export default function useJobsBasic(): UseJobsBasicResult {
   }, [reloadToken]);
 
   return useMemo(
-    () => ({ jobs, loading, error, reload }),
-    [jobs, loading, error, reload]
+    () => ({ jobs, loading, refreshing, error, reload }),
+    [jobs, loading, refreshing, error, reload]
   );
 }

@@ -79,6 +79,18 @@ def parse_installer_names_left_of_at(item_name: str) -> str:
     return left.strip()
 
 
+def parse_job_name_right_of_at(item_name: str) -> str:
+    if not item_name or "@" not in item_name:
+        return ""
+    _, right = item_name.split("@", 1)
+    job_part = right.strip()
+    if not job_part:
+        return ""
+    if " - " in job_part:
+        job_part = job_part.split(" - ", 1)[0].strip()
+    return job_part
+
+
 def first_name_from_installer_list(names_left: str) -> str:
     if not names_left:
         return ""
@@ -194,13 +206,17 @@ def upcoming_jobs(_current_user=Depends(get_current_user)):
         if not installer_names:
             continue
 
+        parsed_job_name = parse_job_name_right_of_at(item_name)
+        if not parsed_job_name:
+            continue
+
         first = first_name_from_installer_list(installer_names).lower()
         contact = employee_phone_by_first.get(first, "None")
 
         job_number = job_number_map.get(inst.id, "")
 
         # Default card fields (fallbacks)
-        card_job_name = item_name
+        card_job_name = parsed_job_name
         address = None
         gc = None
         gcpm = None

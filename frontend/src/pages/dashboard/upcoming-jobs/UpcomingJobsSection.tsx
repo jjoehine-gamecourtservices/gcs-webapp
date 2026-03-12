@@ -8,7 +8,7 @@ type Props = {
 };
 
 export default function UpcomingJobsSection({ onViewAllJobs, onOpenJobOverview }: Props) {
-  const { jobs, loading, error, reload } = useJobsBasic();
+  const { jobs, loading, refreshing, error, reload } = useJobsBasic();
   const [search, setSearch] = useState("");
 
   const filtered = useMemo(() => {
@@ -23,7 +23,6 @@ export default function UpcomingJobsSection({ onViewAllJobs, onOpenJobOverview }
 
   const top10 = useMemo(() => filtered.slice(0, 10), [filtered]);
 
-  // Controls how much "air" you see below the last card when scrolled to bottom.
   const bottomBufferPx = 14;
 
   return (
@@ -33,15 +32,10 @@ export default function UpcomingJobsSection({ onViewAllJobs, onOpenJobOverview }
         display: "flex",
         flexDirection: "column",
         minHeight: 0,
-
-        // IMPORTANT: card is NOT the scroll container anymore
         overflow: "hidden",
-
-        // keep header flush to the top like before
         padding: 0,
       }}
     >
-      {/* Header: keep the glass look */}
       <div
         className="dashCardHead"
         style={{
@@ -56,9 +50,6 @@ export default function UpcomingJobsSection({ onViewAllJobs, onOpenJobOverview }
       >
         <div>
           <div className="dashCardTitle">Upcoming Jobs</div>
-          <div className="dashMuted">
-            {loading ? "Loading…" : error ? "Failed to load from Monday.com." : "Top 10 jobs."}
-          </div>
         </div>
 
         <div className="dashFilters">
@@ -69,28 +60,39 @@ export default function UpcomingJobsSection({ onViewAllJobs, onOpenJobOverview }
             className="dashInput"
             aria-label="Search jobs"
           />
-          <button className="dashBtn" onClick={reload} type="button">
-            Refresh
+
+          <button
+            type="button"
+            className="dashMiniPill jobsRefreshButton"
+            onClick={() => {
+              void reload();
+            }}
+            style={{ cursor: refreshing ? "wait" : "pointer" }}
+            title="Refresh jobs"
+            disabled={refreshing}
+          >
+            {refreshing ? <span className="jobsRefreshSpinner" aria-hidden="true" /> : null}
+            <span>{refreshing ? "Refreshing..." : "Refresh"}</span>
           </button>
-          <button className="dashBtn" onClick={onViewAllJobs} type="button">
-            View all
+
+          <button
+            type="button"
+            className="dashMiniPill jobsActionButton"
+            onClick={onViewAllJobs}
+            title="View all jobs"
+          >
+            <span>View all</span>
           </button>
         </div>
       </div>
 
-      {/* Scrollable body ONLY (so scrollbar starts below header) */}
       <div
         style={{
           flex: "1 1 auto",
           minHeight: 0,
-
           overflowY: "auto",
           overflowX: "hidden",
-
-          // Inset the scrollbar off the card edge (moves the scroll container left)
           marginRight: 12,
-
-          // Keep content aligned with header padding
           paddingLeft: 14,
           paddingRight: 14,
           paddingTop: 12,

@@ -1,113 +1,158 @@
-/* =========================
-   Jobs page layout (v1)
-   ========================= */
-
 .jobsPageRoot {
   display: flex;
   flex-direction: column;
-  gap: 12px; /* match overall app spacing */
+  gap: 12px;
   min-height: 0;
   height: 100%;
 }
 
-.jobsSection {
-  min-height: 0;
-}
-
-/* Two-column layout: pinned is intentionally wider than before */
 .jobsGrid {
   display: grid;
-  grid-template-columns: 520px 1fr; /* noticeably wider pinned */
+  grid-template-columns: 460px 1fr;
   gap: 12px;
-  align-items: start;
   min-height: 0;
+  flex: 1 1 auto;
+  align-items: start;
 }
 
-/* Only collapse on genuinely small screens */
+.jobsPinnedSection {
+  min-height: 0;
+  height: auto;
+  max-height: 100%;
+}
+
+.jobsListSection {
+  min-height: 0;
+  height: 100%;
+}
+
+.jobsPanelHead {
+  min-height: 64px;
+}
+
 @media (max-width: 980px) {
   .jobsGrid {
     grid-template-columns: 1fr;
   }
+
+  .jobsPinnedSection,
+  .jobsListSection {
+    height: auto;
+    max-height: none;
+  }
 }
 
-/* Vertical scroll areas: reserve scrollbar gutter so layout never shifts */
-.jobsScrollY {
-  flex: 1;
-  min-height: 0;
-  overflow: auto;
-  scrollbar-gutter: stable;
+.jobsRecentSection {
+  min-height: 186px;
+  height: 186px;
+  padding: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
-/* “Scroll only on hover” scrollbar visibility */
-.jobsScrollYHover {
-  scrollbar-color: transparent transparent; /* Firefox */
-}
-.jobsScrollYHover:hover {
-  scrollbar-color: rgba(255,255,255,0.35) transparent; /* Firefox */
-}
-
-/* WebKit scrollbar */
-.jobsScrollYHover::-webkit-scrollbar {
-  width: 10px;
-}
-.jobsScrollYHover::-webkit-scrollbar-track {
-  background: transparent;
-}
-.jobsScrollYHover::-webkit-scrollbar-thumb {
-  background: transparent;
-  border-radius: 999px;
-  border: 2px solid transparent;
-  background-clip: content-box;
-}
-.jobsScrollYHover:hover::-webkit-scrollbar-thumb {
-  background: rgba(255,255,255,0.22);
-}
-
-/* =========================
-   Recent Jobs (top row)
-   ========================= */
-
-/* Horizontal scroll with scrollbar on TOP */
-.jobsRecentScrollTop {
-  margin-top: 10px;
+.jobsRecentTopScrollbar {
+  flex: 0 0 auto;
   overflow-x: auto;
   overflow-y: hidden;
   scrollbar-gutter: stable;
-  transform: rotateX(180deg); /* scrollbar on top */
-  padding-bottom: 2px;
+  padding: 10px 14px 0 14px;
+}
+
+.jobsRecentTopScrollbarInner {
+  height: 1px;
+}
+
+.jobsRecentScroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 8px 14px 14px 14px;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.jobsRecentScroll::-webkit-scrollbar {
+  display: none;
 }
 
 .jobsRecentInner {
   display: flex;
   gap: 12px;
   min-width: max-content;
-  transform: rotateX(180deg); /* unflip content */
-  padding: 2px 2px 10px 2px;
+  align-items: flex-start;
 }
 
-/* Empty recent placeholder: single card-sized square (NOT full width) */
+.jobsRecentTileWrap {
+  width: 280px;
+  flex: 0 0 auto;
+}
+
 .jobsRecentEmptyTile {
-  width: 280px;      /* card-ish width */
-  height: 140px;     /* “square-ish” like your mock; adjust later if needed */
+  width: 280px;
+  height: 140px;
   border-radius: 14px;
   border: 1px solid rgba(255,255,255,0.10);
   background: rgba(255,255,255,0.04);
   display: flex;
-  align-items: center;
+  align-items: flex-start;
+  justify-content: flex-start;
   padding: 14px;
+  box-sizing: border-box;
+  flex: 0 0 auto;
 }
 
-/* =========================
-   Jobs list cards
-   ========================= */
+.jobsRecentEmptyContent {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.jobsPanelScroll {
+  scrollbar-gutter: stable;
+}
+
+.jobsPinnedScroll {
+  max-height: calc(100% - 64px);
+}
+
+.jobsPanelScroll::-webkit-scrollbar {
+  width: 10px;
+}
+
+.jobsPanelScroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.jobsPanelScroll::-webkit-scrollbar-thumb {
+  background: rgba(255,255,255,0.22);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+
+.jobsRecentTopScrollbar::-webkit-scrollbar {
+  height: 10px;
+}
+
+.jobsRecentTopScrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.jobsRecentTopScrollbar::-webkit-scrollbar-thumb {
+  background: rgba(255,255,255,0.22);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
 
 .jobsListStack {
   display: grid;
   gap: 12px;
-  padding: 12px;
+  padding: 0;
 }
 
-/* inner panel look */
 .jobsListCard {
   border-radius: 14px;
   padding: 14px;
@@ -115,13 +160,11 @@
   background: rgba(255,255,255,0.06);
 }
 
-/* reserved slot for pin icon placement */
 .jobsListCardPinSlot {
   position: relative;
   height: 0;
 }
 
-/* Pin button bottom-right */
 .jobsPinBtn {
   position: absolute;
   right: 10px;
@@ -142,10 +185,78 @@
   box-shadow: 0 0 0 3px rgba(120, 160, 255, 0.12);
 }
 
-/* White pin icon */
 .jobsPinIcon {
   width: 18px;
   height: 18px;
   display: block;
   fill: currentColor;
+}
+
+.jobsFilterButton {
+  color: rgba(255,255,255,0.92);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.jobsFilterActiveDot {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: rgba(124, 255, 178, 0.95);
+  box-shadow: 0 0 0 2px rgba(16, 26, 51, 0.85);
+}
+
+.jobsFilterPopover {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  width: 240px;
+  border-radius: 14px;
+  border: 1px solid rgba(255,255,255,0.10);
+  background: rgba(16, 26, 51, 0.96);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 18px 40px rgba(0,0,0,0.28);
+  padding: 12px;
+  z-index: 50;
+}
+
+.jobsFilterPopoverTitle {
+  font-size: 12px;
+  font-weight: 800;
+  margin-bottom: 10px;
+  color: rgba(255,255,255,0.92);
+}
+
+.jobsFilterOptions {
+  display: grid;
+  gap: 8px;
+}
+
+.jobsFilterOption {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: rgba(255,255,255,0.92);
+  cursor: pointer;
+}
+
+.jobsFilterFooter {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255,255,255,0.08);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.jobsFilterFooterText {
+  font-size: 12px;
+  color: rgba(255,255,255,0.72);
 }

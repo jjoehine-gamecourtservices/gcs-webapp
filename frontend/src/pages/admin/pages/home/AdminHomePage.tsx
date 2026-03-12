@@ -1,7 +1,7 @@
 import React from "react";
+import TileGrid from "../../../../components/tiles/TileGrid";
 import type { PermissionSet } from "../../permissions/permissions.types";
 import { ADMIN_TILES } from "../../admin.nav";
-import AdminTileGrid from "./AdminTileGrid";
 import { hasPerm } from "../../permissions/permissions.guards";
 
 function UsersIcon() {
@@ -42,9 +42,9 @@ export default function AdminHomePage({ perms, onNavigate }: Props) {
       description: t.description,
       icon,
       disabled,
-      onClick: () => onNavigate(t.to as any),
+      onClick: () => onNavigate(t.to as { id: "users:list" } | { id: "permissions" }),
     };
   });
 
-  return <AdminTileGrid tiles={tiles} />;
+  return <TileGrid tiles={tiles} />;
 }

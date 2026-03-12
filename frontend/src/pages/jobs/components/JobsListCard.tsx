@@ -1,44 +1,57 @@
 import React, { useMemo } from "react";
-import { Pin } from "lucide-react";
+import { Pin, PinOff } from "lucide-react";
 import type { JobListItem } from "../state/useJobsAll";
+
+type PinMode = "pin" | "unpin" | "hidden";
 
 type Props = {
   job: JobListItem;
   onOpen: (jobNumber: string) => void;
+  pinMode?: PinMode;
   onPin?: (jobNumber: string) => void;
+  onUnpin?: (jobNumber: string) => void;
 };
+
+function normalizeDisplay(value?: string): string {
+  const v = (value ?? "").trim();
+  return v || "-";
+}
 
 function joinNamePhone(name?: string, phone?: string): string {
   const n = (name ?? "").trim();
   const p = (phone ?? "").trim();
-  if (!n && !p) return "";
+  if (!n && !p) return "-";
   if (n && !p) return n;
   if (!n && p) return p;
-  return `${n} — ${p}`;
+  return `${n} - ${p}`;
 }
 
-export default function JobsListCard({ job, onOpen, onPin }: Props) {
+export default function JobsListCard({ job, onOpen, pinMode = "pin", onPin, onUnpin }: Props) {
   const titleLine = useMemo(() => {
     const name = (job.jobName ?? "").trim();
     const num = (job.jobNumber ?? "").trim();
-    if (!name) return num;
+    if (!name) return num || "-";
     if (!num) return name;
-    return `${name} — ${num}`;
+    return `${name} - ${num}`;
   }, [job.jobName, job.jobNumber]);
 
-  const addressLine = useMemo(() => (job.address ?? "").trim(), [job.address]);
+  const addressLine = useMemo(() => normalizeDisplay(job.address), [job.address]);
 
   const left1 = useMemo(() => joinNamePhone(job.gc, ""), [job.gc]);
   const left2 = useMemo(() => joinNamePhone(job.gcpm, job.gcpmContact), [job.gcpm, job.gcpmContact]);
-  const left3 = useMemo(() => (job.contractAmount ?? "").trim(), [job.contractAmount]);
+  const left3 = useMemo(() => normalizeDisplay(job.contractAmount), [job.contractAmount]);
 
   const right1 = useMemo(() => joinNamePhone(job.super, job.superContact), [job.super, job.superContact]);
-  const right2 = useMemo(() => (job.pm ?? "").trim(), [job.pm]);
+  const right2 = useMemo(() => normalizeDisplay(job.pm), [job.pm]);
 
-  const scopeLines = useMemo(() => (job.scopeLines ?? []).filter(Boolean), [job.scopeLines]);
+  const installDate = useMemo(() => normalizeDisplay(job.pssInstallDate), [job.pssInstallDate]);
+
+  const scopeLines = useMemo(() => {
+    const clean = (job.scopeLines ?? []).map((x) => (x ?? "").trim()).filter(Boolean);
+    return clean.length ? clean : ["-", "-", "-"];
+  }, [job.scopeLines]);
 
   function LabelInline({ label, value }: { label: string; value: string }) {
-    if (!value) return null;
     return (
       <div style={{ display: "flex", gap: 6, alignItems: "baseline", color: "rgba(255,255,255,0.92)" }}>
         <div style={{ whiteSpace: "nowrap", fontWeight: 600 }}>{label}:</div>
@@ -56,6 +69,9 @@ export default function JobsListCard({ job, onOpen, onPin }: Props) {
     background: "rgba(0,0,0,0.18)",
   };
 
+  const showPinButton = pinMode !== "hidden";
+  const pinAria = pinMode === "unpin" ? "Unpin job" : "Pin job";
+
   return (
     <button
       type="button"
@@ -72,7 +88,6 @@ export default function JobsListCard({ job, onOpen, onPin }: Props) {
       aria-label="Open job"
     >
       <div className="jobsListCard">
-        {/* Header */}
         <div
           style={{
             display: "grid",
@@ -83,25 +98,13 @@ export default function JobsListCard({ job, onOpen, onPin }: Props) {
           }}
         >
           <div style={{ minWidth: 0 }}>
-            {titleLine && (
-              <div style={{ fontWeight: 950, fontSize: 14, marginBottom: 4 }}>
-                {titleLine}
-              </div>
-            )}
-
-            {addressLine && (
-              <div style={{ fontSize: 12, opacity: 0.85 }}>
-                {addressLine}
-              </div>
-            )}
+            <div style={{ fontWeight: 950, fontSize: 14, marginBottom: 4 }}>{titleLine}</div>
+            <div style={{ fontSize: 12, opacity: 0.85 }}>{addressLine}</div>
           </div>
 
-          {job.pssInstallDate && (
-            <div style={pillStyle}>{job.pssInstallDate}</div>
-          )}
+          <div style={pillStyle}>{installDate}</div>
         </div>
 
-        {/* Divider */}
         <div
           style={{
             marginTop: 12,
@@ -110,7 +113,6 @@ export default function JobsListCard({ job, onOpen, onPin }: Props) {
           }}
         />
 
-        {/* Body */}
         <div
           style={{
             marginTop: 0,
@@ -119,14 +121,12 @@ export default function JobsListCard({ job, onOpen, onPin }: Props) {
             gap: 14,
           }}
         >
-          {/* Left column */}
           <div style={{ display: "grid", gap: 10 }}>
             <LabelInline label="GC" value={left1} />
             <LabelInline label="GCPM" value={left2} />
-            <LabelInline label="Contract" value={left3 || "—"} />
+            <LabelInline label="Contract" value={left3} />
           </div>
 
-          {/* Right column */}
           <div style={{ display: "grid", gap: 10 }}>
             <LabelInline label="Super" value={right1} />
             <LabelInline label="PM" value={right2} />
@@ -137,7 +137,6 @@ export default function JobsListCard({ job, onOpen, onPin }: Props) {
             </div>
           </div>
 
-          {/* Scope column */}
           <div
             style={{
               borderLeft: "1px solid rgba(255,255,255,0.10)",
@@ -157,7 +156,7 @@ export default function JobsListCard({ job, onOpen, onPin }: Props) {
             </div>
 
             <div style={{ display: "grid", gap: 6 }}>
-              {(scopeLines.length ? scopeLines : ["—", "—", "—"]).map((line, idx) => (
+              {scopeLines.map((line, idx) => (
                 <div
                   key={idx}
                   style={{
@@ -176,22 +175,30 @@ export default function JobsListCard({ job, onOpen, onPin }: Props) {
           </div>
         </div>
 
-        {/* Pin button */}
-        <div className="jobsListCardPinSlot">
-          <button
-            type="button"
-            className="jobsPinBtn"
-            aria-label="Pin job"
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              if (onPin) onPin(job.jobNumber);
-              else console.log("pin", job.jobNumber);
-            }}
-          >
-            <Pin size={18} strokeWidth={2} />
-          </button>
-        </div>
+        {showPinButton && (
+          <div className="jobsListCardPinSlot">
+            <button
+              type="button"
+              className="jobsPinBtn"
+              aria-label={pinAria}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+
+                if (pinMode === "pin") {
+                  if (onPin) onPin(job.jobNumber);
+                  return;
+                }
+
+                if (pinMode === "unpin") {
+                  if (onUnpin) onUnpin(job.jobNumber);
+                }
+              }}
+            >
+              {pinMode === "unpin" ? <PinOff size={18} strokeWidth={2} /> : <Pin size={18} strokeWidth={2} />}
+            </button>
+          </div>
+        )}
       </div>
     </button>
   );

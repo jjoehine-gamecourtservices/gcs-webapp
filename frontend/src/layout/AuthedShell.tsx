@@ -1,5 +1,3 @@
-// frontend/src/layout/AuthedShell.tsx
-
 import React, { useEffect, useMemo, useState, useCallback } from "react";
 import type { User } from "../types/user";
 import Header from "./header/Header";
@@ -24,8 +22,30 @@ const ALL_MODULES: NavItem[] = [
 ];
 
 function computeAllowedModules(user: User): NavKey[] {
-  if (user.is_master) return ["dashboard", "admin", "jobs", "tasks"];
-  return ["dashboard"];
+  const perms = new Set(user.permissions ?? []);
+  const allowed: NavKey[] = [];
+
+  if (perms.has("dashboard:view")) {
+    allowed.push("dashboard");
+  }
+
+  if (perms.has("admin:access")) {
+    allowed.push("admin");
+  }
+
+  if (perms.has("jobs:view")) {
+    allowed.push("jobs");
+  }
+
+  if (perms.has("tasks:view")) {
+    allowed.push("tasks");
+  }
+
+  if (allowed.length === 0) {
+    return ["dashboard"];
+  }
+
+  return allowed;
 }
 
 function isKeyAllowed(allowed: NavKey[], key: NavKey): boolean {
@@ -44,13 +64,14 @@ export default function AuthedShell({ user, onLogout }: Props) {
 
   const [active, setActive] = useState<NavKey>(() => allowedKeys[0] ?? "dashboard");
   const [jobsRoute, setJobsRoute] = useState<JobsRoute>({ page: "all" });
+  const [moduleInstanceKey, setModuleInstanceKey] = useState(0);
 
   useEffect(() => {
     if (!isKeyAllowed(allowedKeys, active)) {
       setActive(allowedKeys[0] ?? "dashboard");
+      setModuleInstanceKey((n) => n + 1);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allowedKeys.join("|"), active]);
+  }, [allowedKeys, active]);
 
   const openJobsAll = useCallback(() => {
     setJobsRoute({ page: "all" });
@@ -62,10 +83,24 @@ export default function AuthedShell({ user, onLogout }: Props) {
     setActive("jobs");
   }, []);
 
-  const onSelectModule = useCallback((key: NavKey) => {
-    setActive(key);
-    if (key === "jobs") setJobsRoute({ page: "all" });
-  }, []);
+  const onSelectModule = useCallback(
+    (key: NavKey) => {
+      if (key === active) {
+        if (key === "jobs") {
+          setJobsRoute({ page: "all" });
+        }
+        setModuleInstanceKey((n) => n + 1);
+        return;
+      }
+
+      setActive(key);
+
+      if (key === "jobs") {
+        setJobsRoute({ page: "all" });
+      }
+    },
+    [active]
+  );
 
   const roleLabel = user.is_master ? "Master" : "User";
 
@@ -107,7 +142,7 @@ export default function AuthedShell({ user, onLogout }: Props) {
       <div className="dashShell">
         <NavPanel items={navItems} activeKey={active} onSelect={onSelectModule} />
 
-        <main className="dashContent" role="main" aria-label="Module Content" key={active}>
+        <main className="dashContent" role="main" aria-label="Module Content" key={`${active}-${moduleInstanceKey}`}>
           {content}
         </main>
       </div>

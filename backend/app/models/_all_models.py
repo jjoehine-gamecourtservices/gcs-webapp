@@ -14,3 +14,6 @@ from app.models.user import User  # noqa: F401
 from app.models.role import Role  # noqa: F401
 from app.models.permission import Permission  # noqa: F401
 from app.models.associations import RolePermission, UserRole  # noqa: F401
+
+# User job preferences (recent + pinned)
+from app.models.user_job_prefs import UserJobPrefs  # noqa: F401
