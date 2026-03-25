@@ -223,7 +223,7 @@ def _load_jobs(client: MondayClient) -> List[SourceOption]:
         raise HTTPException(status_code=502, detail=f"Failed to load jobs from gateway: {e}")
 
     try:
-        monday_job_items = client.list_board_items_basic(board_id=JOBS_BOARD_ID, limit=1000)
+        monday_job_items = client.list_board_items_basic(board_id=JOBS_BOARD_ID, limit=500)
     except MondayAPIError as e:
         raise HTTPException(status_code=502, detail=str(e))
 

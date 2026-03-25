@@ -14,10 +14,11 @@ class Settings(BaseSettings):
 
     # Security
     SECRET_KEY: str = Field(default="CHANGE_ME_IN_ENV__GCS_SECRET_KEY")
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = Field(default=60 * 12)  # 12 hours
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = Field(default=60 * 12)
     COOKIE_NAME: str = Field(default="gcs_session")
-    COOKIE_SECURE: bool = Field(default=True)  # HTTPS only by default
-    COOKIE_SAMESITE: str = Field(default="lax")  # lax/strict/none
+    COOKIE_SECURE: bool = Field(default=True)
+    COOKIE_SAMESITE: str = Field(default="lax")
+    COOKIE_MAX_AGE_SECONDS: int = Field(default=60 * 60 * 24 * 365 * 10)  # 10 years
 
     # CORS
     CORS_ORIGINS: List[str] = Field(default_factory=list)
@@ -32,13 +33,10 @@ class Settings(BaseSettings):
     MONDAY_TIMEOUT_SECONDS: int = Field(default=30)
 
     MONDAY_BOARD_ID: int = Field(default=0)
-    MONDAY_JOB_COLUMN_ID: str = Field(default="")  # e.g. job_____1
+    MONDAY_JOB_COLUMN_ID: str = Field(default="")
     MONDAY_UPCOMING_LIMIT: int = Field(default=50)
 
     # File Gateway (Windows host service)
-    # Example:
-    #   GCS_FILE_GATEWAY_URL=http://host.docker.internal:8787
-    #   GCS_FILE_GATEWAY_TOKEN=...
     FILE_GATEWAY_URL: Optional[str] = Field(default=None)
     FILE_GATEWAY_TOKEN: Optional[str] = Field(default=None)
 

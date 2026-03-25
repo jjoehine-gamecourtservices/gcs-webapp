@@ -33,11 +33,16 @@ function computeAllowedModules(user: User): NavKey[] {
     allowed.push("admin");
   }
 
-  if (perms.has("jobs:view")) {
+  if (perms.has("jobs:view") || perms.has("jobs")) {
     allowed.push("jobs");
   }
 
-  if (perms.has("tasks:view")) {
+  if (
+    perms.has("tasks:view") ||
+    perms.has("tasks") ||
+    perms.has("tasks.rentals") ||
+    perms.has("tasks.stock")
+  ) {
     allowed.push("tasks");
   }
 
@@ -128,7 +133,7 @@ export default function AuthedShell({ user, onLogout }: Props) {
         return <JobsPage route={jobsRoute} onOpenAll={openJobsAll} onOpenOverview={openJobOverview} />;
 
       case "tasks":
-        return <TasksPage />;
+        return <TasksPage perms={permsSet} />;
 
       default:
         return fallback;

@@ -5,6 +5,7 @@ import type { RentalListItem } from "../../rentals.types";
 type Props = {
   rentals: RentalListItem[];
   loading: boolean;
+  refreshing?: boolean;
   selectedRentalId: string;
   actionRentalId: string;
   onSelectRental: (rentalId: string) => void;
@@ -84,6 +85,7 @@ function sortByStartDateAsc(a: RentalListItem, b: RentalListItem): number {
 export default function RentalsList({
   rentals,
   loading,
+  refreshing = false,
   selectedRentalId,
   actionRentalId,
   onSelectRental,
@@ -103,6 +105,8 @@ export default function RentalsList({
     };
   }, [rentals]);
 
+  const showInitialLoading = loading && rentals.length === 0;
+
   return (
     <div
       style={{
@@ -114,8 +118,10 @@ export default function RentalsList({
         boxSizing: "border-box",
       }}
     >
-      {rentals.length === 0 ? (
-        <div className="dashEmpty">{loading ? "Loading..." : "No rentals found."}</div>
+      {showInitialLoading ? (
+        <div className="dashEmpty">Loading...</div>
+      ) : rentals.length === 0 ? (
+        <div className="dashEmpty">No rentals found.</div>
       ) : (
         <div
           style={{
@@ -126,8 +132,21 @@ export default function RentalsList({
           }}
         >
           <div style={{ display: "grid", gap: 10, minWidth: 0 }}>
-            <div className="dashMuted" style={{ paddingLeft: 2 }}>
-              Active / Upcoming
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 10,
+                paddingLeft: 2,
+              }}
+            >
+              <div className="dashMuted">Active / Upcoming</div>
+              {refreshing ? (
+                <div className="dashMuted" style={{ fontSize: 12 }}>
+                  Refreshing...
+                </div>
+              ) : null}
             </div>
 
             {currentRentals.length === 0 ? (

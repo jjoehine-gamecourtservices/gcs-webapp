@@ -1,12 +1,13 @@
-import type { PermissionKey } from "./permissions/permissions.types";
 import type { AdminNavState } from "./admin.types";
+
+export type AdminRequiredPermission = "users:read" | "permissions:read";
 
 export type AdminTileDef = {
   id: string;
   title: string;
   description: string;
   to: AdminNavState;
-  required?: PermissionKey;
+  required?: AdminRequiredPermission;
   icon?: "users" | "lock";
 };
 

@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-from fastapi import Depends, HTTPException, status, Cookie
-from sqlalchemy.orm import Session
+from fastapi import Cookie, Depends, HTTPException, status
+from sqlalchemy import select
+from sqlalchemy.orm import Session, selectinload
 
 from app.core.config import settings
 from app.core.security import decode_access_token
@@ -22,7 +23,13 @@ def get_current_user(
     except Exception:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid session")
 
-    user = db.get(User, user_id)
+    stmt = (
+        select(User)
+        .options(selectinload(User.permissions))
+        .where(User.id == user_id)
+    )
+    user = db.scalar(stmt)
+
     if not user or not user.is_active:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
 

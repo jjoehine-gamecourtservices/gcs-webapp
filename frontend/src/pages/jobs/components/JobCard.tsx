@@ -18,7 +18,6 @@ function parseYmdLocal(ymd?: string): Date | null {
   const d = Number(m[3]);
   if (!Number.isFinite(y) || !Number.isFinite(mo) || !Number.isFinite(d)) return null;
 
-  // Local midnight avoids UTC off-by-one issues
   return new Date(y, mo - 1, d, 0, 0, 0, 0);
 }
 
@@ -43,9 +42,30 @@ function computeStatusBadge(startDate?: string, endDate?: string): StatusBadge {
   return "";
 }
 
+function clean(value?: string): string {
+  return (value ?? "").trim();
+}
+
+function isUsable(value?: string): boolean {
+  const s = clean(value);
+  return !!s && s.toLowerCase() !== "none";
+}
+
+function joinNamePhone(name?: string, phone?: string): string {
+  const n = clean(name);
+  const p = clean(phone);
+
+  const hasName = isUsable(n);
+  const hasPhone = isUsable(p);
+
+  if (hasName && hasPhone) return `${n} - ${p}`;
+  if (hasName) return n;
+  if (hasPhone) return p;
+  return "";
+}
+
 export default function JobCard({ job, onOpen }: Props) {
-  // CRITICAL: do NOT ever show Monday item id.
-  const jobNumberLabel = (job.jobNumber ?? "").trim(); // <-- removed "|| job.id"
+  const jobNumberLabel = (job.jobNumber ?? "").trim();
 
   const titleLine = useMemo(() => {
     const name = (job.jobName ?? "").trim();
@@ -63,18 +83,16 @@ export default function JobCard({ job, onOpen }: Props) {
 
   const addressLine = useMemo(() => (job.address ?? "").trim(), [job.address]);
 
-  const leftPrimary = useMemo(() => job.generalContractor ?? "", [job.generalContractor]);
-  const leftSecondary = useMemo(() => job.gcpm ?? "", [job.gcpm]);
-  const leftContact = useMemo(() => job.gcpmContact ?? "", [job.gcpmContact]);
+  const leftPrimary = useMemo(() => clean(job.generalContractor), [job.generalContractor]);
+  const leftGcpm = useMemo(() => joinNamePhone(job.gcpm, job.gcpmContact), [job.gcpm, job.gcpmContact]);
+  const leftSuper = useMemo(() => joinNamePhone(job.super, job.superContact), [job.super, job.superContact]);
 
-  const rightPrimary = useMemo(() => job.pm ?? "", [job.pm]);
-  const rightSecondary = useMemo(() => job.installer ?? "", [job.installer]);
-  const rightContact = useMemo(() => job.installerContact ?? "", [job.installerContact]);
+  const rightPm = useMemo(() => clean(job.pm), [job.pm]);
+  const rightInstaller = useMemo(() => joinNamePhone(job.installer, job.installerContact), [job.installer, job.installerContact]);
 
-  const hasLeft = Boolean(leftPrimary || leftSecondary || leftContact);
-  const hasRight = Boolean(rightPrimary || rightSecondary || rightContact);
+  const hasLeft = Boolean(isUsable(leftPrimary) || leftGcpm || leftSuper);
+  const hasRight = Boolean(isUsable(rightPm) || rightInstaller);
 
-  // Helper for single-line [label]: [info]
   function LabelInline({ label, value }: { label: string; value: string }) {
     if (!value) return null;
     return (
@@ -85,7 +103,6 @@ export default function JobCard({ job, onOpen }: Props) {
     );
   }
 
-  // EXACT existing pill style (the date pill). We'll reuse it for Upcoming.
   const basePillStyle: React.CSSProperties = {
     fontSize: 12,
     whiteSpace: "nowrap",
@@ -95,7 +112,6 @@ export default function JobCard({ job, onOpen }: Props) {
     background: "rgba(0,0,0,0.18)",
   };
 
-  // Active pill: green but subtle.
   const activePillStyle: React.CSSProperties = {
     ...basePillStyle,
     border: "1px solid rgba(46, 204, 113, 0.55)",
@@ -125,7 +141,6 @@ export default function JobCard({ job, onOpen }: Props) {
           background: "rgba(255,255,255,0.06)",
         }}
       >
-        {/* Header row (structure unchanged) */}
         <div
           style={{
             display: "grid",
@@ -136,12 +151,10 @@ export default function JobCard({ job, onOpen }: Props) {
           }}
         >
           <div style={{ minWidth: 0 }}>
-            {/* If titleLine is empty, render nothing (no visible header text) */}
             {titleLine ? <div style={{ fontWeight: 950, fontSize: 14, marginBottom: 4 }}>{titleLine}</div> : null}
             {addressLine && <div style={{ fontSize: 12, opacity: 0.85 }}>{addressLine}</div>}
           </div>
 
-          {/* Right side: SAME POSITION as before, but now can show 2 bubbles */}
           {(statusBadge || dateRange) && (
             <div style={{ display: "flex", gap: 8, alignItems: "center", justifyContent: "flex-end" }}>
               {statusBadge && (
@@ -153,7 +166,6 @@ export default function JobCard({ job, onOpen }: Props) {
           )}
         </div>
 
-        {/* Body: two-column contacts (structure unchanged) */}
         {(hasLeft || hasRight) && (
           <div
             style={{
@@ -163,20 +175,29 @@ export default function JobCard({ job, onOpen }: Props) {
               display: "grid",
               gridTemplateColumns: hasLeft && hasRight ? "1fr 1fr" : "1fr",
               gap: 14,
+              alignItems: "start",
             }}
           >
             {hasLeft && (
-              <div style={{ display: "grid", gap: 10 }}>
-                <LabelInline label="GC" value={leftPrimary} />
-                <LabelInline label="GCPM" value={leftSecondary} />
-                <LabelInline label="Contact" value={leftContact} />
+              <div style={{ display: "grid", gap: 10, alignContent: "start" }}>
+                <LabelInline label="GC" value={isUsable(leftPrimary) ? leftPrimary : ""} />
+                <LabelInline label="GCPM" value={leftGcpm} />
+                <LabelInline label="Super" value={leftSuper} />
               </div>
             )}
+
             {hasRight && (
-              <div style={{ display: "grid", gap: 10 }}>
-                <LabelInline label="PM" value={rightPrimary} />
-                <LabelInline label="Installer" value={rightSecondary} />
-                <LabelInline label="Contact" value={rightContact} />
+              <div
+                style={{
+                  display: "grid",
+                  gap: 8,
+                  alignContent: "start",
+                  justifySelf: "start",
+                  paddingTop: 2,
+                }}
+              >
+                <LabelInline label="PM" value={isUsable(rightPm) ? rightPm : ""} />
+                <LabelInline label="Installer" value={rightInstaller} />
               </div>
             )}
           </div>

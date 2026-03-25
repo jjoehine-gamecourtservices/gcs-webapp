@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import json
-import socket
-import urllib.error
 import urllib.request
 from dataclasses import dataclass
 from typing import Any, Dict, Optional
@@ -20,6 +18,8 @@ class GatewayJobCardFields:
     generalContractor: Optional[str] = None
     gcpm: Optional[str] = None
     gcpmContact: Optional[str] = None
+    super: Optional[str] = None
+    superContact: Optional[str] = None
     pm: Optional[str] = None
 
 
@@ -62,12 +62,13 @@ class FileGatewayClient:
         if not isinstance(data, dict):
             return GatewayJobCardFields()
 
-        # Strict whitelist mapping (ONLY what the upcoming job card needs)
         job_name = _clean_str(data.get("item_name"))
         address = _clean_str(data.get("job_site_address"))
         gc = _clean_str(data.get("gc"))
         gcpm = _clean_str(data.get("gc_pm"))
         gcpm_phone = _clean_str(data.get("gc_pm_phone"))
+        job_super = _clean_str(data.get("super"))
+        super_phone = _clean_str(data.get("super_phone"))
         pm = _clean_str(data.get("pm"))
 
         return GatewayJobCardFields(
@@ -76,16 +77,13 @@ class FileGatewayClient:
             generalContractor=gc,
             gcpm=gcpm,
             gcpmContact=gcpm_phone,
+            super=job_super,
+            superContact=super_phone,
             pm=pm,
         )
 
 
 def safe_fetch_job_card_fields(job_number: Optional[str]) -> Dict[str, Optional[str]]:
-    """
-    Safe wrapper for endpoints:
-    - Never raises
-    - Returns all None fields on failure/missing
-    """
     empty = GatewayJobCardFields()
     if not job_number:
         return empty.__dict__

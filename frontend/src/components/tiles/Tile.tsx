@@ -17,32 +17,35 @@ export default function Tile({ title, description, icon, disabled, onClick }: Ti
       style={{
         width: "100%",
         textAlign: "left",
-        border: "1px solid rgba(255,255,255,0.10)",
-        background: "rgba(255,255,255,0.03)",
+        border: "1px solid rgba(255,255,255,0.12)",
+        background: "#1a2745",
         borderRadius: 16,
         padding: 12,
         cursor: disabled ? "not-allowed" : "pointer",
         opacity: disabled ? 0.55 : 1,
-        transition: "transform 140ms ease, background 140ms ease, border-color 140ms ease",
+        transition: "transform 140ms ease, background 140ms ease, border-color 140ms ease, box-shadow 140ms ease",
+        color: "rgba(255,255,255,0.95)",
       }}
       onMouseEnter={(e) => {
         if (disabled) return;
         e.currentTarget.style.transform = "translateY(-1px)";
-        e.currentTarget.style.background = "rgba(255,255,255,0.045)";
+        e.currentTarget.style.background = "#223154";
         e.currentTarget.style.borderColor = "rgba(255,255,255,0.18)";
+        e.currentTarget.style.boxShadow = "0 8px 20px rgba(0,0,0,0.35)";
       }}
       onMouseLeave={(e) => {
         e.currentTarget.style.transform = "translateY(0)";
-        e.currentTarget.style.background = "rgba(255,255,255,0.03)";
-        e.currentTarget.style.borderColor = "rgba(255,255,255,0.10)";
+        e.currentTarget.style.background = "#1a2745";
+        e.currentTarget.style.borderColor = "rgba(255,255,255,0.12)";
+        e.currentTarget.style.boxShadow = "none";
       }}
     >
       <div
         style={{
           height: 120,
           borderRadius: 12,
-          background: "rgba(255,255,255,0.06)",
-          border: "1px solid rgba(255,255,255,0.08)",
+          background: "#223154",
+          border: "1px solid rgba(255,255,255,0.10)",
           display: "grid",
           placeItems: "center",
           overflow: "hidden",
@@ -56,7 +59,8 @@ export default function Tile({ title, description, icon, disabled, onClick }: Ti
             borderRadius: 16,
             display: "grid",
             placeItems: "center",
-            background: "rgba(255,255,255,0.08)",
+            background: "#2a3a60",
+            color: "rgba(255,255,255,0.92)",
           }}
         >
           {icon}
@@ -64,8 +68,10 @@ export default function Tile({ title, description, icon, disabled, onClick }: Ti
       </div>
 
       <div style={{ marginTop: 10 }}>
-        <div style={{ fontWeight: 800, fontSize: 14, lineHeight: "18px" }}>{title}</div>
-        <div className="dashMuted" style={{ marginTop: 4, lineHeight: "18px" }}>
+        <div style={{ fontWeight: 800, fontSize: 14, lineHeight: "18px", color: "rgba(255,255,255,0.95)" }}>
+          {title}
+        </div>
+        <div className="dashMuted" style={{ marginTop: 4, lineHeight: "18px", color: "rgba(255,255,255,0.72)" }}>
           {description}
         </div>
       </div>

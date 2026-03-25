@@ -1,13 +1,19 @@
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from pydantic import BaseModel, EmailStr
-from sqlalchemy.orm import Session
 from sqlalchemy import select
+from sqlalchemy.orm import Session
 
+from app.api.deps import get_current_user
 from app.core.config import settings
-from app.core.security import verify_password, create_access_token
+from app.core.security import create_access_token, verify_password
 from app.db.session import db_dependency
 from app.models.user import User
-from app.api.deps import get_current_user
+from app.services.permissions import (
+    PERMISSION_JOBS,
+    PERMISSION_TASKS,
+    PERMISSION_TASKS_RENTALS,
+    get_effective_permission_keys,
+)
 
 router = APIRouter()
 
@@ -32,36 +38,24 @@ def _get_user_by_email(db: Session, email: str) -> User | None:
     return db.scalar(select(User).where(User.email == email))
 
 
-def _permissions_for_user(user: User) -> list[str]:
-    """
-    Backend is the source of truth for permissions.
+def _legacy_permissions_for_frontend(user: User, module_permissions: list[str]) -> list[str]:
+    perms = set(module_permissions)
 
-    Current policy:
-      - All authenticated active users:
-          - dashboard:view
-          - jobs:view
-      - Master users additionally get:
-          - admin:access
-          - users:read
-          - permissions:read
-          - tasks:view
-    """
-    base_permissions = [
-        "dashboard:view",
-        "jobs:view",
-    ]
+    # Keep current frontend alive during migration.
+    perms.add("dashboard:view")
+
+    if PERMISSION_JOBS in module_permissions:
+        perms.add("jobs:view")
+
+    if PERMISSION_TASKS in module_permissions or PERMISSION_TASKS_RENTALS in module_permissions:
+        perms.add("tasks:view")
 
     if user.is_master:
-        return [
-            "admin:access",
-            "dashboard:view",
-            "jobs:view",
-            "tasks:view",
-            "users:read",
-            "permissions:read",
-        ]
+        perms.add("admin:access")
+        perms.add("users:read")
+        perms.add("permissions:read")
 
-    return base_permissions
+    return sorted(perms)
 
 
 @router.post("/login")
@@ -94,12 +88,15 @@ def logout(response: Response):
 
 @router.get("/me", response_model=MeResponse)
 def me(current_user: User = Depends(get_current_user)):
+    module_permissions = get_effective_permission_keys(current_user)
+    response_permissions = _legacy_permissions_for_frontend(current_user, module_permissions)
+
     return MeResponse(
         id=current_user.id,
         email=current_user.email,
         is_master=current_user.is_master,
         is_active=current_user.is_active,
-        permissions=_permissions_for_user(current_user),
+        permissions=response_permissions,
         name=getattr(current_user, "name", None),
         phone=getattr(current_user, "phone", None),
         position=getattr(current_user, "position", None),

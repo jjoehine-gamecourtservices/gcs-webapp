@@ -1,4 +1,9 @@
-import type { RentalListItem, RentalsResponse } from "./rentals.types";
+import type {
+  RentalListItem,
+  RentalsResponse,
+  RentalQuoteVendor,
+  RentalQuoteVendorsResponse,
+} from "./rentals.types";
 
 type RentalAction =
   | "reserved"
@@ -54,4 +59,26 @@ export async function runRentalAction(itemId: string, action: RentalAction): Pro
   }
 
   return (await r.json()) as RentalActionResponse;
+}
+
+export async function fetchRentalQuoteVendors(): Promise<RentalQuoteVendor[]> {
+  const r = await fetch("/api/monday/rental-quote-vendors", {
+    method: "GET",
+    credentials: "include",
+    headers: { Accept: "application/json" },
+  });
+
+  if (!r.ok) {
+    let detail = "";
+    try {
+      const data = await r.json();
+      detail = typeof data?.detail === "string" ? data.detail : JSON.stringify(data);
+    } catch {
+      detail = await r.text().catch(() => "");
+    }
+    throw new Error(`HTTP ${r.status}${detail ? `: ${detail}` : ""}`);
+  }
+
+  const data = (await r.json()) as RentalQuoteVendorsResponse;
+  return Array.isArray(data.vendors) ? data.vendors : [];
 }

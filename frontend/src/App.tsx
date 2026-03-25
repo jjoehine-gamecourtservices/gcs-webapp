@@ -9,6 +9,7 @@ import "./styles/dashboard.css";
 import "./styles/jobs.css";
 import "./styles/tasks.css";
 import "./styles/rentals.css";
+import "./styles/permissions.css";
 
 import { apiJson, apiText } from "./api/api";
 import LoginPage from "./auth/LoginPage";
@@ -54,7 +55,6 @@ export default function App() {
     setUser(null);
   }, []);
 
-  // IMPORTANT: LoginPage must remain unchanged and must not be wrapped in the app shell.
   if (!user) {
     return <LoginPage buildStamp={buildStamp} onLoggedIn={onLoggedIn} />;
   }

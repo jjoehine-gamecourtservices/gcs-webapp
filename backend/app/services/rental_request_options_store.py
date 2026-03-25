@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from typing import Dict, List
 
@@ -10,11 +11,17 @@ _DEFAULT_DATA = {
     "accessories": [],
 }
 
+_DEFAULT_FILE_PATH = Path("/data/rental_request_options.json")
+
 
 class RentalRequestOptionsStore:
     def __init__(self, file_path: Path | None = None) -> None:
         if file_path is None:
-            file_path = Path(__file__).resolve().parents[2] / "data" / "rental_request_options.json"
+            env_path = os.getenv("RENTAL_REQUEST_OPTIONS_FILE", "").strip()
+            if env_path:
+                file_path = Path(env_path)
+            else:
+                file_path = _DEFAULT_FILE_PATH
         self._file_path = file_path
 
     def _ensure_file(self) -> None:

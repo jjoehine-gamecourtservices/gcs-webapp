@@ -26,7 +26,7 @@
 
 .gcsAuthedMain {
   flex: 1;
-  min-height: 0; /* critical for nested scrolling */
+  min-height: 0;
 }
 
 /* DASHBOARD SHELL */
@@ -38,7 +38,6 @@
   gap: 12px;
 }
 
-/* tighter nav: 240px */
 .dashShell {
   flex: 1;
   min-height: 0;
@@ -55,6 +54,7 @@
   background: rgba(16, 26, 51, 0.72);
   backdrop-filter: blur(10px);
   box-shadow: none;
+  color: rgba(255, 255, 255, 0.95);
 }
 
 .dashSidebar {
@@ -70,9 +70,9 @@
   text-align: left;
   padding: 11px 12px;
   border-radius: 14px;
-  border: 1px solid rgba(255,255,255,0.10);
-  background: rgba(255,255,255,0.06);
-  color: rgba(255,255,255,0.95);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.95);
   cursor: pointer;
   font-weight: 950;
 }
@@ -89,7 +89,6 @@
   opacity: 0.95;
 }
 
-/* Main content area now prevents outer scroll and enables inner scroll */
 .dashContent {
   flex: 1 1 0;
   min-height: 0;
@@ -120,6 +119,7 @@
 .dashCardTitle {
   font-weight: 950;
   font-size: 14px;
+  color: rgba(255, 255, 255, 0.95);
 }
 
 .dashMuted {
@@ -131,10 +131,11 @@
 .dashMiniPill {
   padding: 7px 10px;
   border-radius: 999px;
-  border: 1px solid rgba(255,255,255,0.12);
-  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.06);
   font-weight: 900;
   font-size: 12px;
+  color: rgba(255, 255, 255, 0.95);
 }
 
 .dashStats {
@@ -145,10 +146,11 @@
 }
 
 .dashStat {
-  border: 1px solid rgba(255,255,255,0.10);
+  border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 14px;
-  background: rgba(0,0,0,0.18);
+  background: rgba(0, 0, 0, 0.18);
   padding: 12px;
+  color: rgba(255, 255, 255, 0.95);
 }
 
 .dashStatLabel {
@@ -159,6 +161,7 @@
 .dashStatValue {
   margin-top: 4px;
   font-weight: 950;
+  color: rgba(255, 255, 255, 0.95);
 }
 
 .dashFilters {
@@ -173,8 +176,8 @@
   box-sizing: border-box;
   padding: 10px 12px;
   border-radius: 12px;
-  border: 1px solid rgba(255,255,255,0.14);
-  background: rgba(0,0,0,0.18);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(0, 0, 0, 0.18);
   color: var(--text);
   outline: none;
   font-size: 14px;
@@ -198,9 +201,9 @@
 .dashTable {
   margin-top: 12px;
   border-radius: 16px;
-  border: 1px solid rgba(255,255,255,0.10);
+  border: 1px solid rgba(255, 255, 255, 0.1);
   overflow: hidden;
-  background: rgba(0,0,0,0.14);
+  background: rgba(0, 0, 0, 0.14);
   display: flex;
   flex-direction: column;
   min-height: 0;
@@ -216,14 +219,14 @@
   font-weight: 950;
   letter-spacing: 0.4px;
   color: var(--muted);
-  border-bottom: 1px solid rgba(255,255,255,0.10);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .dashTableBody {
   flex: 1;
   min-height: 0;
   overflow: auto;
-  background: transparent; /* critical: no white behind scrollbars */
+  background: transparent;
 }
 
 .dashEmpty {
@@ -236,12 +239,14 @@
   grid-template-columns: 140px 1fr 240px 160px;
   gap: 10px;
   padding: 12px 12px;
-  border-bottom: 1px solid rgba(255,255,255,0.06);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
   align-items: center;
+  color: rgba(255, 255, 255, 0.95);
 }
 
 .dashRowStrong {
   font-weight: 950;
+  color: rgba(255, 255, 255, 0.95);
 }
 
 .dashRowStatus {
@@ -284,21 +289,21 @@
 .dashBtn {
   padding: 10px 14px;
   border-radius: 12px;
-  border: 1px solid rgba(255,255,255,0.18);
-  background: rgba(255,255,255,0.08);
-  color: rgba(255,255,255,0.92);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.92);
   cursor: pointer;
   font-weight: 900;
 }
 
 .dashBtn:hover {
-  background: rgba(255,255,255,0.12);
+  background: rgba(255, 255, 255, 0.12);
   box-shadow: 0 0 0 3px rgba(120, 160, 255, 0.18);
 }
 
 .jobsRefreshButton,
 .jobsActionButton {
-  color: rgba(255,255,255,0.92);
+  color: rgba(255, 255, 255, 0.92);
   display: inline-flex;
   align-items: center;
   gap: 8px;
@@ -316,8 +321,8 @@
   width: 12px;
   height: 12px;
   border-radius: 999px;
-  border: 2px solid rgba(255,255,255,0.25);
-  border-top-color: rgba(255,255,255,0.92);
+  border: 2px solid rgba(255, 255, 255, 0.25);
+  border-top-color: rgba(255, 255, 255, 0.92);
   animation: jobs-spin 0.8s linear infinite;
 }
 

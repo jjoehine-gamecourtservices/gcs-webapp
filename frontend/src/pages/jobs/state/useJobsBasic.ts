@@ -1,5 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { fetchUpcomingJobsBasic } from "../jobs.api";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  fetchUpcomingJobsBasic,
+  fetchUpcomingJobsMeta,
+  refreshUpcomingJobsBasic,
+} from "../jobs.api";
 import { mapMondayBasicToJobCardModel } from "../jobs.mapper";
 import type { JobCardModel } from "../jobs.types";
 
@@ -11,122 +15,129 @@ type UseJobsBasicResult = {
   reload: () => void;
 };
 
-type JobsBasicCachePayload = {
-  version: 1;
-  cachedAt: number; // ms epoch
-  expiresAt: number; // ms epoch (local midnight)
-  jobs: JobCardModel[];
-};
-
-const CACHE_KEY = "gcs.jobsBasic.upcoming.v1";
-
-function getNextLocalMidnightMs(now = new Date()): number {
-  const next = new Date(now);
-  next.setHours(24, 0, 0, 0); // local time: next midnight
-  return next.getTime();
-}
-
-function safeReadCache(nowMs: number): JobsBasicCachePayload | null {
-  try {
-    const raw = localStorage.getItem(CACHE_KEY);
-    if (!raw) return null;
-
-    const parsed = JSON.parse(raw) as Partial<JobsBasicCachePayload>;
-
-    if (parsed.version !== 1) return null;
-    if (!Array.isArray(parsed.jobs)) return null;
-    if (typeof parsed.expiresAt !== "number") return null;
-
-    if (nowMs >= parsed.expiresAt) {
-      try {
-        localStorage.removeItem(CACHE_KEY);
-      } catch {
-        // ignore
-      }
-      return null;
-    }
-
-    return parsed as JobsBasicCachePayload;
-  } catch {
-    return null;
-  }
-}
-
-function safeWriteCache(jobs: JobCardModel[], nowMs: number): void {
-  const payload: JobsBasicCachePayload = {
-    version: 1,
-    cachedAt: nowMs,
-    expiresAt: getNextLocalMidnightMs(new Date(nowMs)),
-    jobs,
-  };
-
-  try {
-    localStorage.setItem(CACHE_KEY, JSON.stringify(payload));
-  } catch {
-    // ignore storage failures
-  }
-}
+const META_POLL_MS = 30_000;
 
 export default function useJobsBasic(): UseJobsBasicResult {
   const [jobs, setJobs] = useState<JobCardModel[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [reloadToken, setReloadToken] = useState(0);
 
-  const reload = useCallback(() => setReloadToken((n) => n + 1), []);
+  const latestUpdatedAtRef = useRef<string>("");
+
+  const loadFromCache = useCallback(async () => {
+    const mondayJobs = await fetchUpcomingJobsBasic();
+    const mapped = mondayJobs.map(mapMondayBasicToJobCardModel);
+    setJobs(mapped);
+  }, []);
+
+  const reload = useCallback(async () => {
+    setRefreshing(true);
+    setError(null);
+
+    try {
+      const mondayJobs = await refreshUpcomingJobsBasic();
+      const mapped = mondayJobs.map(mapMondayBasicToJobCardModel);
+      setJobs(mapped);
+
+      try {
+        const meta = await fetchUpcomingJobsMeta();
+        latestUpdatedAtRef.current = meta.updatedAt || "";
+      } catch {
+        // ignore meta fetch failure after successful refresh
+      }
+    } catch (e: any) {
+      setError(e?.message ? String(e.message) : "Failed to refresh jobs");
+    } finally {
+      setRefreshing(false);
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
 
-    const run = async () => {
-      const nowMs = Date.now();
-      const force = reloadToken > 0;
-
+    const runInitialLoad = async () => {
+      setLoading(true);
       setError(null);
 
-      if (force) {
-        setRefreshing(true);
-      } else {
-        setLoading(true);
-      }
-
-      if (!force) {
-        const cached = safeReadCache(nowMs);
-        if (cached && !cancelled) {
-          setJobs(cached.jobs);
-          setLoading(false);
-          return;
-        }
-      }
-
       try {
-        const mondayJobs = await fetchUpcomingJobsBasic();
-        const mapped = mondayJobs.map(mapMondayBasicToJobCardModel);
+        const [meta] = await Promise.all([fetchUpcomingJobsMeta()]);
 
-        safeWriteCache(mapped, nowMs);
+        if (cancelled) return;
 
-        if (!cancelled) {
-          setJobs(mapped);
-          setLoading(false);
-          setRefreshing(false);
+        latestUpdatedAtRef.current = meta.updatedAt || "";
+
+        await loadFromCache();
+
+        if (cancelled) return;
+
+        if (meta.refreshError) {
+          setError(meta.refreshError);
         }
       } catch (e: any) {
         if (!cancelled) {
           setJobs([]);
-          setLoading(false);
-          setRefreshing(false);
           setError(e?.message ? String(e.message) : "Failed to load jobs");
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
         }
       }
     };
 
-    run();
+    void runInitialLoad();
 
     return () => {
       cancelled = true;
     };
-  }, [reloadToken]);
+  }, [loadFromCache]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const pollMeta = async () => {
+      try {
+        const meta = await fetchUpcomingJobsMeta();
+        if (cancelled) return;
+
+        const nextUpdatedAt = meta.updatedAt || "";
+        const prevUpdatedAt = latestUpdatedAtRef.current;
+
+        if (!prevUpdatedAt && nextUpdatedAt) {
+          latestUpdatedAtRef.current = nextUpdatedAt;
+          await loadFromCache();
+          if (meta.refreshError) {
+            setError(meta.refreshError);
+          }
+          return;
+        }
+
+        if (nextUpdatedAt && nextUpdatedAt !== prevUpdatedAt) {
+          latestUpdatedAtRef.current = nextUpdatedAt;
+          await loadFromCache();
+        }
+
+        if (meta.refreshError) {
+          setError(meta.refreshError);
+        } else {
+          setError(null);
+        }
+      } catch {
+        // polling failures should not blank the page
+      }
+    };
+
+    const timer = window.setInterval(() => {
+      void pollMeta();
+    }, META_POLL_MS);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [loadFromCache]);
 
   return useMemo(
     () => ({ jobs, loading, refreshing, error, reload }),

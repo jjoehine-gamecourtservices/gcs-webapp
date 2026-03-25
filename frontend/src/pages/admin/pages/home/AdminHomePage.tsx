@@ -1,8 +1,6 @@
 import React from "react";
 import TileGrid from "../../../../components/tiles/TileGrid";
-import type { PermissionSet } from "../../permissions/permissions.types";
 import { ADMIN_TILES } from "../../admin.nav";
-import { hasPerm } from "../../permissions/permissions.guards";
 
 function UsersIcon() {
   return (
@@ -27,13 +25,13 @@ function LockIcon() {
 }
 
 type Props = {
-  perms: PermissionSet;
+  perms: Set<string>;
   onNavigate: (to: { id: "users:list" } | { id: "permissions" }) => void;
 };
 
 export default function AdminHomePage({ perms, onNavigate }: Props) {
   const tiles = ADMIN_TILES.map((t) => {
-    const disabled = t.required ? !hasPerm(perms, t.required) : false;
+    const disabled = t.required ? !perms.has(t.required) : false;
     const icon = t.icon === "users" ? <UsersIcon /> : t.icon === "lock" ? <LockIcon /> : null;
 
     return {

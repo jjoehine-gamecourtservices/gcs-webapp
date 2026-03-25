@@ -1,0 +1,157 @@
+.permissionsPage {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+}
+
+.permissionsBoardMessage {
+  padding: 14px;
+}
+
+.permissionsListScroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0 8px 14px 12px;
+  scrollbar-gutter: stable;
+}
+
+.permissionsListInner {
+  min-height: min-content;
+}
+
+.permissionsUserList {
+  display: grid;
+  gap: 10px;
+}
+
+.permissionsUserButton {
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  text-align: left;
+  padding: 12px 14px;
+}
+
+.permissionsUserText {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.permissionsUserEmail {
+  font-size: 12px;
+}
+
+.permissionsUserRole {
+  font-size: 12px;
+}
+
+.permissionsModalOverlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 40px 16px;
+  overflow-y: auto;
+  z-index: 9999;
+}
+
+.permissionsModalCard {
+  width: min(760px, 100%);
+  box-sizing: border-box;
+  max-height: calc(100vh - 80px);
+  overflow-y: auto;
+}
+
+.permissionsModalContent {
+  margin-top: 16px;
+  display: grid;
+  gap: 16px;
+}
+
+.permissionsAdminRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.permissionsAdminTitle {
+  font-weight: 600;
+}
+
+.permissionsAdminSubtitle {
+  font-size: 12px;
+}
+
+.permissionsSections {
+  display: grid;
+  gap: 12px;
+}
+
+.permissionsSectionCard {
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.04);
+  padding: 14px;
+}
+
+.permissionsSectionHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.permissionsChildren {
+  margin-top: 12px;
+  display: grid;
+  gap: 10px;
+  padding-left: 12px;
+}
+
+.permissionsChildRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+}
+
+.permissionsCheckbox {
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+}
+
+.permissionsActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.permissionsClickable {
+  cursor: pointer;
+}
+
+.permissionsDisabled {
+  cursor: default;
+}
+
+.permissionsDisabled .permissionsCheckbox,
+.permissionsCheckbox:disabled {
+  cursor: not-allowed;
+}

@@ -1,7 +1,5 @@
 export type PermissionKey = "jobs" | "tasks" | "tasks.rentals" | "tasks.stock";
 
-export type PermissionSet = Set<PermissionKey>;
-
 export type PermissionCatalogItem = {
   key: PermissionKey;
   label: string;

@@ -1,89 +1,27 @@
-import React, { useCallback, useMemo, useState } from "react";
-import AdminLayout from "./layout/AdminLayout";
+import React, { useMemo, useState } from "react";
 import type { AdminNavState } from "./admin.types";
-import type { PermissionSet, PermissionKey } from "./permissions/permissions.types";
 
 import AdminHomePage from "./pages/home/AdminHomePage";
 import PermissionsPage from "./pages/permissions/PermissionsPage";
 import UsersListPage from "./pages/users/UsersListPage";
-import { createUser } from "./pages/users/users.api";
 
 type Props = {
   userIsMaster: boolean;
-  perms?: PermissionSet;
+  perms?: Set<string>;
 };
+
+type PermissionRoleFilter = "all" | "admin" | "user";
 
 export default function AdminPage({ userIsMaster, perms }: Props) {
   const [page, setPage] = useState<AdminNavState>({ id: "home" });
 
-  const [createOpen, setCreateOpen] = useState(false);
-  const [createBusy, setCreateBusy] = useState(false);
-  const [createMsg, setCreateMsg] = useState("");
+  const [permissionsSearch, setPermissionsSearch] = useState("");
+  const [permissionsRoleFilter, setPermissionsRoleFilter] = useState<PermissionRoleFilter>("all");
+  const [permissionsFiltersOpen, setPermissionsFiltersOpen] = useState(false);
 
-  const [newEmail, setNewEmail] = useState("");
-  const [newPassword, setNewPassword] = useState("");
-  const [newIsMaster, setNewIsMaster] = useState(false);
-
-  // Forces UsersListPage to remount (and re-fetch) after a successful user creation.
-  const [usersListNonce, setUsersListNonce] = useState(0);
-
-  const effectivePerms: PermissionSet = useMemo(() => {
-    return perms ?? (new Set<PermissionKey>() as PermissionSet);
+  const effectivePerms = useMemo(() => {
+    return perms ?? new Set<string>();
   }, [perms]);
-
-  const closeCreate = useCallback(() => {
-    setCreateOpen(false);
-    setCreateBusy(false);
-    setCreateMsg("");
-    setNewEmail("");
-    setNewPassword("");
-    setNewIsMaster(false);
-  }, []);
-
-  const onCreate = useCallback(async () => {
-    setCreateMsg("");
-    const email = newEmail.trim();
-    const password = newPassword.trim();
-
-    if (!email || !password) {
-      setCreateMsg("✖ Email and password are required.");
-      return;
-    }
-
-    if (newIsMaster) {
-      const ok = window.confirm(
-        `Create MASTER account for:\n\n${email}\n\nMaster accounts can manage users and permissions. Continue?`
-      );
-      if (!ok) return;
-    }
-
-    setCreateBusy(true);
-    try {
-      const r = await createUser({
-        email,
-        password,
-        // Keep behavior: omit unless true (backend should default false if missing).
-        is_master: newIsMaster ? true : undefined,
-      });
-
-      if (!r.ok || !r.data) {
-        setCreateMsg(`✖ Create failed: HTTP ${r.status}: ${r.text}`);
-        return;
-      }
-
-      setCreateMsg(`✓ Created: ${r.data.email} (${r.data.is_master ? "Master" : "User"})`);
-
-      // Reset fields
-      setNewEmail("");
-      setNewPassword("");
-      setNewIsMaster(false);
-
-      // Refresh Accounts list instantly (without requiring a page reload)
-      setUsersListNonce((n) => n + 1);
-    } finally {
-      setCreateBusy(false);
-    }
-  }, [newEmail, newPassword, newIsMaster]);
 
   const title = useMemo(() => {
     if (page.id === "users:list") return "Accounts";
@@ -91,189 +29,145 @@ export default function AdminPage({ userIsMaster, perms }: Props) {
     return "Admin";
   }, [page.id]);
 
-  const subtitle = useMemo(() => {
-    if (page.id === "users:list") return "Manage accounts.";
-    if (page.id === "permissions") return "Manage module permissions.";
-    return "Manage users and module permissions.";
-  }, [page.id]);
-
   const actions = useMemo(() => {
-    if (!userIsMaster) return null;
+    if (page.id !== "permissions") return null;
+
+    const hasActiveFilters = permissionsRoleFilter !== "all";
 
     return (
-      <button
-        type="button"
-        className="dashMiniPill"
-        style={{ cursor: "pointer" }}
-        onClick={() => setCreateOpen(true)}
-        title="Create a new user"
-      >
-        Create User
-      </button>
-    );
-  }, [userIsMaster]);
+      <div className="dashFilters">
+        <input
+          className="dashInput"
+          placeholder="Search user"
+          type="text"
+          value={permissionsSearch}
+          onChange={(e) => setPermissionsSearch(e.target.value)}
+        />
 
-  return (
-    <AdminLayout
-      title={title}
-      subtitle={subtitle}
-      page={page}
-      onGoHome={() => setPage({ id: "home" })}
-      actions={actions}
-    >
-      {page.id === "home" ? <AdminHomePage perms={effectivePerms} onNavigate={(to) => setPage(to)} /> : null}
-
-      {page.id === "users:list" ? <UsersListPage key={usersListNonce} /> : null}
-      {page.id === "permissions" ? <PermissionsPage /> : null}
-
-      {createOpen ? (
-        <div
-          role="dialog"
-          aria-modal="true"
-          onMouseDown={(e) => {
-            if (e.target === e.currentTarget) closeCreate();
-          }}
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(0,0,0,0.55)",
-            display: "flex",
-            justifyContent: "center",
-            alignItems: "flex-start",
-            padding: "40px 16px",
-            overflowY: "auto",
-            zIndex: 9999,
-          }}
-        >
-          <div
-            className="dashCard"
+        <div style={{ position: "relative" }}>
+          <button
+            className="dashMiniPill jobsActionButton jobsFilterButton"
+            type="button"
+            onClick={() => setPermissionsFiltersOpen((v) => !v)}
+            aria-label="Filters"
             style={{
-              width: "min(720px, 100%)",
-              boxSizing: "border-box",
-              maxHeight: "calc(100vh - 80px)",
-              overflowY: "auto",
+              position: "relative",
+              paddingRight: hasActiveFilters ? 28 : undefined,
             }}
           >
-            <div className="dashCardHead">
-              <div>
-                <div className="dashCardTitle">Create User</div>
-                <div className="dashMuted">Requires email + password.</div>
+            <span>Filters</span>
+            {hasActiveFilters ? <span aria-hidden="true" className="jobsFilterActiveDot" /> : null}
+          </button>
+
+          {permissionsFiltersOpen ? (
+            <div className="jobsFilterPopover">
+              <div className="jobsFilterPopoverTitle">Role Filter</div>
+
+              <div className="jobsFilterOptions">
+                <label className="jobsFilterOption">
+                  <input
+                    type="checkbox"
+                    checked={permissionsRoleFilter === "all"}
+                    onChange={() => setPermissionsRoleFilter("all")}
+                  />
+                  <span>All</span>
+                </label>
+
+                <label className="jobsFilterOption">
+                  <input
+                    type="checkbox"
+                    checked={permissionsRoleFilter === "admin"}
+                    onChange={() => setPermissionsRoleFilter("admin")}
+                  />
+                  <span>Admin</span>
+                </label>
+
+                <label className="jobsFilterOption">
+                  <input
+                    type="checkbox"
+                    checked={permissionsRoleFilter === "user"}
+                    onChange={() => setPermissionsRoleFilter("user")}
+                  />
+                  <span>User</span>
+                </label>
               </div>
-              <button type="button" className="dashMiniPill" onClick={closeCreate} style={{ cursor: "pointer" }}>
-                Close
-              </button>
-            </div>
 
-            {createMsg ? (
-              <div className="dashMuted" style={{ marginTop: 10 }}>
-                {createMsg}
-              </div>
-            ) : null}
-
-            <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "1fr", gap: 10 }}>
-              <input
-                value={newEmail}
-                onChange={(e) => setNewEmail(e.target.value)}
-                placeholder="email@gamecourtservices.com"
-                disabled={createBusy}
-                style={inputStyle}
-              />
-
-              <input
-                value={newPassword}
-                onChange={(e) => setNewPassword(e.target.value)}
-                placeholder="Temporary password"
-                disabled={createBusy}
-                style={inputStyle}
-              />
-
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  <span className="dashMuted">Master account</span>
-                  <ToggleSwitch checked={newIsMaster} disabled={createBusy} onChange={setNewIsMaster} />
+              <div className="jobsFilterFooter">
+                <div className="jobsFilterFooterText">
+                  {permissionsRoleFilter === "all" ? "No filters active" : "1 active"}
                 </div>
 
                 <button
+                  className="dashBtn"
                   type="button"
-                  className="dashMiniPill"
-                  disabled={createBusy || newEmail.trim().length === 0 || newPassword.trim().length === 0}
-                  onClick={onCreate}
-                  style={{
-                    cursor:
-                      createBusy || newEmail.trim().length === 0 || newPassword.trim().length === 0
-                        ? "not-allowed"
-                        : "pointer",
-                    opacity:
-                      createBusy || newEmail.trim().length === 0 || newPassword.trim().length === 0 ? 0.65 : 1,
-                  }}
+                  onClick={() => setPermissionsRoleFilter("all")}
+                  disabled={!hasActiveFilters}
                 >
-                  Create
+                  Clear
                 </button>
               </div>
             </div>
+          ) : null}
+        </div>
+      </div>
+    );
+  }, [page.id, permissionsFiltersOpen, permissionsRoleFilter, permissionsSearch]);
+
+  const showHeader = page.id !== "home";
+
+  return (
+    <section
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        height: "100%",
+        minHeight: 0,
+      }}
+    >
+      {showHeader ? (
+        <div style={{ flex: "0 0 auto" }}>
+          <div
+            style={{
+              width: "100%",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 12,
+              flexWrap: "nowrap",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+              <div className="dashCardTitle" style={{ whiteSpace: "nowrap" }}>
+                {title}
+              </div>
+            </div>
+
+            {actions ? <div style={{ display: "flex", alignItems: "center", gap: 10 }}>{actions}</div> : null}
           </div>
         </div>
       ) : null}
-    </AdminLayout>
-  );
-}
 
-function ToggleSwitch({
-  checked,
-  disabled,
-  onChange,
-}: {
-  checked: boolean;
-  disabled?: boolean;
-  onChange: (next: boolean) => void;
-}) {
-  return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={checked}
-      disabled={disabled}
-      onClick={() => onChange(!checked)}
-      style={{
-        width: 48,
-        height: 28,
-        borderRadius: 999,
-        border: "1px solid rgba(255,255,255,0.18)",
-        background: checked ? "rgba(80, 200, 120, 0.55)" : "rgba(255,255,255,0.10)",
-        position: "relative",
-        padding: 0,
-        cursor: disabled ? "not-allowed" : "pointer",
-        opacity: disabled ? 0.65 : 1,
-        transition: "background 120ms ease",
-      }}
-      title={checked ? "Master enabled" : "Master disabled"}
-    >
-      <span
-        aria-hidden="true"
+      <div
         style={{
-          position: "absolute",
-          top: 3,
-          left: checked ? 24 : 3,
-          width: 22,
-          height: 22,
-          borderRadius: 999,
-          background: "rgba(255,255,255,0.90)",
-          boxShadow: "0 2px 10px rgba(0,0,0,0.35)",
-          transition: "left 120ms ease",
+          flex: "1 1 auto",
+          minHeight: 0,
+          overflowY: "auto",
+          marginTop: showHeader ? 12 : 0,
         }}
-      />
-    </button>
+      >
+        {page.id === "home" ? <AdminHomePage perms={effectivePerms} onNavigate={(to) => setPage(to)} /> : null}
+
+        {page.id === "users:list" ? <UsersListPage userIsMaster={userIsMaster} /> : null}
+
+        {page.id === "permissions" ? (
+          <PermissionsPage
+            search={permissionsSearch}
+            roleFilter={permissionsRoleFilter}
+            filtersOpen={permissionsFiltersOpen}
+            onFiltersOpenChange={setPermissionsFiltersOpen}
+          />
+        ) : null}
+      </div>
+    </section>
   );
 }
-
-const inputStyle: React.CSSProperties = {
-  width: "100%",
-  padding: "10px 12px",
-  borderRadius: 10,
-  border: "1px solid rgba(255,255,255,0.18)",
-  background: "rgba(0,0,0,0.18)",
-  color: "var(--text)",
-  outline: "none",
-  fontSize: 13,
-  boxSizing: "border-box",
-};

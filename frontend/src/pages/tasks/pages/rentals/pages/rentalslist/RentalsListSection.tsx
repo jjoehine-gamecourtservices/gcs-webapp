@@ -6,6 +6,7 @@ import type { RentalListItem } from "../../rentals.types";
 type Props = {
   rentals: RentalListItem[];
   loading: boolean;
+  refreshing?: boolean;
   selectedRental: RentalListItem | null;
   selectedRentalId: string;
   actionRentalId: string;
@@ -22,6 +23,7 @@ type Props = {
 export default function RentalsListSection({
   rentals,
   loading,
+  refreshing = false,
   selectedRental,
   selectedRentalId,
   actionRentalId,
@@ -88,6 +90,7 @@ export default function RentalsListSection({
           <RentalsList
             rentals={rentals}
             loading={loading}
+            refreshing={refreshing}
             selectedRentalId={selectedRentalId}
             actionRentalId={actionRentalId}
             onSelectRental={onSelectRental}

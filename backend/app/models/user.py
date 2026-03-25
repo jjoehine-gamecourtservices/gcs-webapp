@@ -25,3 +25,10 @@ class User(Base):
         secondary="user_roles",
         back_populates="users",
     )
+
+    permissions = relationship(
+        "UserPermission",
+        back_populates="user",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )

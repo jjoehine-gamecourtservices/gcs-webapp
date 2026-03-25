@@ -2,15 +2,25 @@ from __future__ import annotations
 
 import re
 from datetime import date, datetime
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
+from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user
 from app.core.config import settings
+from app.db.session import db_dependency
 from app.integrations.file_gateway_client import safe_fetch_job_card_fields
 from app.integrations.monday_client import MondayAPIError, MondayClient
+from app.services.app_cache import (
+    get_cache_record,
+    mark_cache_refresh_failed,
+    mark_cache_refresh_started,
+    upsert_cache_record,
+    utc_now_iso,
+)
+from app.services.rental_quote_vendors import list_rental_quote_vendors
 
 router = APIRouter()
 
@@ -25,23 +35,24 @@ EMPLOYEE_PHONE_COL_ID = "cell__1"
 _VALID_EVENT_RE = re.compile(r"^\s*[^@]+@\s*.+$")
 
 MAX_UNIQUE_GATEWAY_FETCHES = 50
-
 EXCLUDED_STATUS_TEXT = "Game Court Emp."
+
+UPCOMING_JOBS_CACHE_KEY = "upcoming_jobs"
 
 
 class UpcomingJob(BaseModel):
     id: str
 
-    # Card fields
     jobName: str
     jobNumber: str = ""
     address: Optional[str] = None
     generalContractor: Optional[str] = None
     gcpm: Optional[str] = None
     gcpmContact: Optional[str] = None
+    super: Optional[str] = None
+    superContact: Optional[str] = None
     pm: Optional[str] = None
 
-    # Existing fields (do not touch behavior)
     installer: str = "None"
     installerContact: str = "None"
     startDate: Optional[str] = None
@@ -50,6 +61,25 @@ class UpcomingJob(BaseModel):
 
 class UpcomingJobsResponse(BaseModel):
     jobs: List[UpcomingJob]
+
+
+class UpcomingJobsCacheMetaResponse(BaseModel):
+    cacheKey: str
+    updatedAt: str
+    refreshStartedAt: str | None = None
+    refreshFinishedAt: str | None = None
+    refreshError: str | None = None
+    count: int
+
+
+class RentalQuoteVendor(BaseModel):
+    id: str
+    name: str
+    email: str
+
+
+class RentalQuoteVendorsResponse(BaseModel):
+    vendors: List[RentalQuoteVendor]
 
 
 def parse_timeline_column(text: str) -> Tuple[Optional[date], Optional[date]]:
@@ -128,17 +158,59 @@ def bucket_date(start_d: date, today: date) -> date:
     return today if start_d < today else start_d
 
 
-@router.get("/upcoming-jobs", response_model=UpcomingJobsResponse)
-def upcoming_jobs(_current_user=Depends(get_current_user)):
-    client = MondayClient(
+def _monday_client() -> MondayClient:
+    return MondayClient(
         token=settings.MONDAY_API_TOKEN,
         api_url=settings.MONDAY_API_URL,
         timeout_seconds=settings.MONDAY_TIMEOUT_SECONDS,
     )
 
+
+def _serialize_jobs(jobs: List[UpcomingJob]) -> dict[str, Any]:
+    return {
+        "jobs": [job.model_dump() for job in jobs],
+    }
+
+
+def _deserialize_jobs_payload(payload: Any) -> UpcomingJobsResponse:
+    if not isinstance(payload, dict):
+        return UpcomingJobsResponse(jobs=[])
+
+    raw_jobs = payload.get("jobs")
+    if not isinstance(raw_jobs, list):
+        return UpcomingJobsResponse(jobs=[])
+
+    jobs: List[UpcomingJob] = []
+    for item in raw_jobs:
+        if not isinstance(item, dict):
+            continue
+        try:
+            jobs.append(UpcomingJob(**item))
+        except Exception:
+            continue
+
+    return UpcomingJobsResponse(jobs=jobs)
+
+
+def _has_gateway_job_card_data(fields: Dict[str, Optional[str]]) -> bool:
+    return any(
+        (fields.get(key) or "").strip()
+        for key in (
+            "jobName",
+            "address",
+            "generalContractor",
+            "gcpm",
+            "gcpmContact",
+            "super",
+            "superContact",
+            "pm",
+        )
+    )
+
+
+def _build_upcoming_jobs_payload(client: MondayClient) -> UpcomingJobsResponse:
     today = date.today()
 
-    # Employee lookup (best-effort; never fail the endpoint)
     try:
         employee_items = client.list_board_jobs_basic(
             board_id=EMPLOYEE_BOARD_ID,
@@ -149,7 +221,6 @@ def upcoming_jobs(_current_user=Depends(get_current_user)):
     except MondayAPIError:
         employee_phone_by_first = {}
 
-    # Core Monday pulls (fail the endpoint if these die)
     try:
         installer_items = client.list_board_jobs_basic(
             board_id=MAIN_BOARD_ID,
@@ -181,7 +252,6 @@ def upcoming_jobs(_current_user=Depends(get_current_user)):
     job_number_map: Dict[str, str] = {j.id: (j.job_number or "").strip() for j in job_number_items}
     status_map: Dict[str, str] = {s.id: (s.job_number or "").strip() for s in status_items}
 
-    # Per-request cache to avoid N+1 duplicate gateway calls
     gateway_cache: Dict[str, Dict[str, Optional[str]]] = {}
     gateway_fetches = 0
 
@@ -192,7 +262,6 @@ def upcoming_jobs(_current_user=Depends(get_current_user)):
         if not is_valid_event_name(item_name):
             continue
 
-        # Exclude internal employee items by Monday status
         status_text = status_map.get(inst.id, "").strip()
         if status_text == EXCLUDED_STATUS_TEXT:
             continue
@@ -213,42 +282,42 @@ def upcoming_jobs(_current_user=Depends(get_current_user)):
         first = first_name_from_installer_list(installer_names).lower()
         contact = employee_phone_by_first.get(first, "None")
 
-        job_number = job_number_map.get(inst.id, "")
+        job_number = job_number_map.get(inst.id, "").strip()
+        if not job_number:
+            continue
 
-        # Default card fields (fallbacks)
+        cached = gateway_cache.get(job_number)
+        if cached is None:
+            if gateway_fetches < MAX_UNIQUE_GATEWAY_FETCHES:
+                gateway_fetches += 1
+                cached = safe_fetch_job_card_fields(job_number)
+            else:
+                cached = {
+                    "jobName": None,
+                    "address": None,
+                    "generalContractor": None,
+                    "gcpm": None,
+                    "gcpmContact": None,
+                    "super": None,
+                    "superContact": None,
+                    "pm": None,
+                }
+            gateway_cache[job_number] = cached
+
+        if not _has_gateway_job_card_data(cached):
+            continue
+
         card_job_name = parsed_job_name
-        address = None
-        gc = None
-        gcpm = None
-        gcpm_contact = None
-        pm = None
+        if cached.get("jobName"):
+            card_job_name = str(cached["jobName"])
 
-        # Enrich from gateway only when we have a job number
-        if job_number:
-            cached = gateway_cache.get(job_number)
-            if cached is None:
-                if gateway_fetches < MAX_UNIQUE_GATEWAY_FETCHES:
-                    gateway_fetches += 1
-                    cached = safe_fetch_job_card_fields(job_number)
-                else:
-                    cached = {
-                        "jobName": None,
-                        "address": None,
-                        "generalContractor": None,
-                        "gcpm": None,
-                        "gcpmContact": None,
-                        "pm": None,
-                    }
-                gateway_cache[job_number] = cached
-
-            # Apply whitelist fields (never crash)
-            if cached.get("jobName"):
-                card_job_name = str(cached["jobName"])
-            address = cached.get("address")
-            gc = cached.get("generalContractor")
-            gcpm = cached.get("gcpm")
-            gcpm_contact = cached.get("gcpmContact")
-            pm = cached.get("pm")
+        address = cached.get("address")
+        gc = cached.get("generalContractor")
+        gcpm = cached.get("gcpm")
+        gcpm_contact = cached.get("gcpmContact")
+        job_super = cached.get("super")
+        super_contact = cached.get("superContact")
+        pm = cached.get("pm")
 
         jobs_out.append(
             UpcomingJob(
@@ -259,6 +328,8 @@ def upcoming_jobs(_current_user=Depends(get_current_user)):
                 generalContractor=gc,
                 gcpm=gcpm,
                 gcpmContact=gcpm_contact,
+                super=job_super,
+                superContact=super_contact,
                 pm=pm,
                 installer=installer_names,
                 installerContact=contact,
@@ -274,5 +345,88 @@ def upcoming_jobs(_current_user=Depends(get_current_user)):
         return (b, s, e, j.jobName or "")
 
     jobs_out.sort(key=sort_key)
-
     return UpcomingJobsResponse(jobs=jobs_out)
+
+
+def _refresh_upcoming_jobs_cache(db: Session) -> UpcomingJobsResponse:
+    client = _monday_client()
+    started = utc_now_iso()
+    mark_cache_refresh_started(db, UPCOMING_JOBS_CACHE_KEY)
+
+    try:
+        response = _build_upcoming_jobs_payload(client)
+        upsert_cache_record(
+            db,
+            cache_key=UPCOMING_JOBS_CACHE_KEY,
+            payload=_serialize_jobs(response.jobs),
+            refresh_error=None,
+            refresh_started_at=started,
+            refresh_finished_at=utc_now_iso(),
+        )
+        return response
+    except HTTPException as e:
+        mark_cache_refresh_failed(db, UPCOMING_JOBS_CACHE_KEY, str(e.detail))
+        raise
+    except Exception as e:
+        mark_cache_refresh_failed(db, UPCOMING_JOBS_CACHE_KEY, str(e))
+        raise HTTPException(status_code=502, detail=f"Failed to refresh upcoming jobs cache: {e}")
+
+
+@router.get("/upcoming-jobs", response_model=UpcomingJobsResponse)
+def upcoming_jobs(
+    db: Session = Depends(db_dependency),
+    _current_user=Depends(get_current_user),
+):
+    cached = get_cache_record(db, UPCOMING_JOBS_CACHE_KEY)
+    if cached is not None:
+        return _deserialize_jobs_payload(cached.get("payload"))
+
+    return _refresh_upcoming_jobs_cache(db)
+
+
+@router.post("/upcoming-jobs/refresh", response_model=UpcomingJobsResponse)
+def refresh_upcoming_jobs(
+    db: Session = Depends(db_dependency),
+    _current_user=Depends(get_current_user),
+):
+    return _refresh_upcoming_jobs_cache(db)
+
+
+@router.get("/upcoming-jobs/meta", response_model=UpcomingJobsCacheMetaResponse)
+def upcoming_jobs_meta(
+    db: Session = Depends(db_dependency),
+    _current_user=Depends(get_current_user),
+):
+    cached = get_cache_record(db, UPCOMING_JOBS_CACHE_KEY)
+    if cached is None:
+        return UpcomingJobsCacheMetaResponse(
+            cacheKey=UPCOMING_JOBS_CACHE_KEY,
+            updatedAt="",
+            refreshStartedAt=None,
+            refreshFinishedAt=None,
+            refreshError=None,
+            count=0,
+        )
+
+    payload = _deserialize_jobs_payload(cached.get("payload"))
+    return UpcomingJobsCacheMetaResponse(
+        cacheKey=UPCOMING_JOBS_CACHE_KEY,
+        updatedAt=str(cached.get("updatedAt") or ""),
+        refreshStartedAt=cached.get("refreshStartedAt"),
+        refreshFinishedAt=cached.get("refreshFinishedAt"),
+        refreshError=cached.get("refreshError"),
+        count=len(payload.jobs),
+    )
+
+
+@router.get("/rental-quote-vendors", response_model=RentalQuoteVendorsResponse)
+def rental_quote_vendors(
+    _current_user=Depends(get_current_user),
+):
+    try:
+        vendors = list_rental_quote_vendors()
+        return RentalQuoteVendorsResponse(
+            vendors=[RentalQuoteVendor(**vendor) for vendor in vendors]
+        )
+    except MondayAPIError as e:
+        raise HTTPException(status_code=502, detail=str(e))

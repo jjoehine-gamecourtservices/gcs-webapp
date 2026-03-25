@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiJson } from "../../../api/api";
 
 export type JobListItem = {
@@ -39,16 +39,16 @@ type ApiJob = {
   contractAmount: string;
 };
 
-const CACHE_KEY = "gcs_jobs_all_cache_v1";
-const CACHE_DATE_KEY = "gcs_jobs_all_cache_date_v1";
+type JobsMetaResponse = {
+  cacheKey: string;
+  updatedAt: string;
+  refreshStartedAt: string | null;
+  refreshFinishedAt: string | null;
+  refreshError: string | null;
+  count: number;
+};
 
-function todayKey(): string {
-  const now = new Date();
-  const y = now.getFullYear();
-  const m = String(now.getMonth() + 1).padStart(2, "0");
-  const d = String(now.getDate()).padStart(2, "0");
-  return `${y}-${m}-${d}`;
-}
+const META_POLL_MS = 30_000;
 
 function mapApiJobs(apiJobs: ApiJob[]): JobListItem[] {
   return apiJobs.map((j) => ({
@@ -72,84 +72,163 @@ function mapApiJobs(apiJobs: ApiJob[]): JobListItem[] {
   }));
 }
 
-function readCache(): JobListItem[] | null {
-  try {
-    const cachedDate = localStorage.getItem(CACHE_DATE_KEY);
-    if (cachedDate !== todayKey()) return null;
+async function fetchAllJobsCached(): Promise<JobListItem[]> {
+  const r = await apiJson<{ jobs: ApiJob[]; count: number }>("/api/jobs", {
+    method: "GET",
+    headers: { Accept: "application/json" },
+  });
 
-    const raw = localStorage.getItem(CACHE_KEY);
-    if (!raw) return null;
-
-    const parsed = JSON.parse(raw) as JobListItem[];
-    if (!Array.isArray(parsed)) return null;
-
-    return parsed;
-  } catch {
-    return null;
+  if (!r.ok || !r.data || !Array.isArray(r.data.jobs)) {
+    throw new Error(`HTTP ${r.status}${r.text ? `: ${r.text}` : ""}`);
   }
+
+  return mapApiJobs(r.data.jobs);
 }
 
-function writeCache(jobs: JobListItem[]): void {
-  try {
-    localStorage.setItem(CACHE_KEY, JSON.stringify(jobs));
-    localStorage.setItem(CACHE_DATE_KEY, todayKey());
-  } catch {
-    // ignore storage failures
+async function fetchAllJobsMeta(): Promise<JobsMetaResponse> {
+  const r = await apiJson<JobsMetaResponse>("/api/jobs/meta", {
+    method: "GET",
+    headers: { Accept: "application/json" },
+  });
+
+  if (!r.ok || !r.data) {
+    throw new Error(`HTTP ${r.status}${r.text ? `: ${r.text}` : ""}`);
   }
+
+  return r.data;
+}
+
+async function refreshAllJobsCached(): Promise<JobListItem[]> {
+  const r = await apiJson<{ jobs: ApiJob[]; count: number }>("/api/jobs/refresh", {
+    method: "POST",
+    headers: { Accept: "application/json" },
+  });
+
+  if (!r.ok || !r.data || !Array.isArray(r.data.jobs)) {
+    throw new Error(`HTTP ${r.status}${r.text ? `: ${r.text}` : ""}`);
+  }
+
+  return mapApiJobs(r.data.jobs);
 }
 
 export default function useJobsAll() {
   const [jobs, setJobs] = useState<JobListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const load = useCallback(async (forceRefresh = false) => {
-    if (!forceRefresh) {
-      const cached = readCache();
-      if (cached) {
-        setJobs(cached);
-        setLoading(false);
-        return;
-      }
-    }
+  const latestUpdatedAtRef = useRef<string>("");
 
-    if (forceRefresh) {
-      setRefreshing(true);
-    } else {
-      setLoading(true);
-    }
-
-    try {
-      const r = await apiJson<{ jobs: ApiJob[] }>("/api/jobs", {
-        method: "GET",
-        headers: { Accept: "application/json" },
-      });
-
-      if (!r.ok || !r.data || !Array.isArray(r.data.jobs)) {
-        console.warn("[jobs] failed", r.status);
-        setJobs([]);
-        return;
-      }
-
-      const mapped = mapApiJobs(r.data.jobs);
-      setJobs(mapped);
-      writeCache(mapped);
-    } catch (e) {
-      console.warn("[jobs] exception", e);
-      setJobs([]);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
+  const loadFromCache = useCallback(async () => {
+    const nextJobs = await fetchAllJobsCached();
+    setJobs(nextJobs);
   }, []);
 
   useEffect(() => {
-    void load(false);
-  }, [load]);
+    let cancelled = false;
+
+    const runInitialLoad = async () => {
+      setLoading(true);
+      setError(null);
+
+      try {
+        const meta = await fetchAllJobsMeta();
+        if (cancelled) return;
+
+        latestUpdatedAtRef.current = meta.updatedAt || "";
+
+        await loadFromCache();
+        if (cancelled) return;
+
+        if (meta.refreshError) {
+          setError(meta.refreshError);
+        }
+      } catch (e: any) {
+        if (!cancelled) {
+          setJobs([]);
+          setError(e?.message ? String(e.message) : "Failed to load jobs");
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    };
+
+    void runInitialLoad();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [loadFromCache]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const pollMeta = async () => {
+      try {
+        const meta = await fetchAllJobsMeta();
+        if (cancelled) return;
+
+        const nextUpdatedAt = meta.updatedAt || "";
+        const prevUpdatedAt = latestUpdatedAtRef.current;
+
+        if (!prevUpdatedAt && nextUpdatedAt) {
+          latestUpdatedAtRef.current = nextUpdatedAt;
+          await loadFromCache();
+          if (meta.refreshError) setError(meta.refreshError);
+          return;
+        }
+
+        if (nextUpdatedAt && nextUpdatedAt !== prevUpdatedAt) {
+          latestUpdatedAtRef.current = nextUpdatedAt;
+          await loadFromCache();
+        }
+
+        if (meta.refreshError) {
+          setError(meta.refreshError);
+        } else {
+          setError(null);
+        }
+      } catch {
+        // polling failures should not clear current page state
+      }
+    };
+
+    const timer = window.setInterval(() => {
+      void pollMeta();
+    }, META_POLL_MS);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [loadFromCache]);
 
   const reload = useCallback(async () => {
-    await load(true);
-  }, [load]);
+    setRefreshing(true);
+    setError(null);
 
-  return { jobs, loading, refreshing, reload };
+    try {
+      const nextJobs = await refreshAllJobsCached();
+      setJobs(nextJobs);
+
+      try {
+        const meta = await fetchAllJobsMeta();
+        latestUpdatedAtRef.current = meta.updatedAt || "";
+      } catch {
+        // ignore meta failure after successful refresh
+      }
+    } catch (e: any) {
+      setError(e?.message ? String(e.message) : "Failed to refresh jobs");
+    } finally {
+      setRefreshing(false);
+      setLoading(false);
+    }
+  }, []);
+
+  return useMemo(
+    () => ({ jobs, loading, refreshing, reload, error }),
+    [jobs, loading, refreshing, reload, error]
+  );
 }

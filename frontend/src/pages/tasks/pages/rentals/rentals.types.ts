@@ -24,3 +24,13 @@ export type RentalsResponse = {
   rentals: RentalListItem[];
   count: number;
 };
+
+export type RentalQuoteVendor = {
+  id: string;
+  name: string;
+  email: string;
+};
+
+export type RentalQuoteVendorsResponse = {
+  vendors: RentalQuoteVendor[];
+};

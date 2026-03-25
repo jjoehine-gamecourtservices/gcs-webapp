@@ -20,6 +20,7 @@ RENTALS_STATUS_COL_ID = "status__1"
 DEBUG_COLUMN_IDS: Dict[str, str] = {
     "timeline": "timeline__1",
     "location": "location__1",
+    "address_lookup": "lookup_mm1d2jf",
     "job_name": "connect_boards9__1",
     "job_number": "mirror0__1",
     "notes": "long_text2__1",
@@ -195,6 +196,18 @@ def _location_address(col: Optional[Dict[str, Any]]) -> str:
             return address
 
     return _text_value(col)
+
+
+def _rental_address(address_lookup_col: Optional[Dict[str, Any]], location_col: Optional[Dict[str, Any]]) -> str:
+    lookup_address = _display_value(address_lookup_col)
+    if lookup_address:
+        return lookup_address
+
+    lookup_text = _text_value(address_lookup_col)
+    if lookup_text:
+        return lookup_text
+
+    return _location_address(location_col)
 
 
 def _extract_long_text(col: Optional[Dict[str, Any]]) -> str:
@@ -474,6 +487,7 @@ def list_rentals(_current_user=Depends(get_current_user)):
 
         timeline_col = all_cols.get(DEBUG_COLUMN_IDS["timeline"])
         location_col = all_cols.get(DEBUG_COLUMN_IDS["location"])
+        address_lookup_col = all_cols.get(DEBUG_COLUMN_IDS["address_lookup"])
         job_name_col = all_cols.get(DEBUG_COLUMN_IDS["job_name"])
         job_number_col = all_cols.get(DEBUG_COLUMN_IDS["job_number"])
         notes_col = all_cols.get(DEBUG_COLUMN_IDS["notes"])
@@ -499,7 +513,7 @@ def list_rentals(_current_user=Depends(get_current_user)):
                 "itemName": item_name,
                 "jobName": job_name,
                 "jobNumber": job_number,
-                "address": _location_address(location_col),
+                "address": _rental_address(address_lookup_col, location_col),
                 "pm": pm,
                 "dateRange": _timeline_range_text(timeline_col),
                 "notes": _extract_long_text(notes_col),
