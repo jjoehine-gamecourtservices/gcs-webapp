@@ -17,7 +17,7 @@ class FileGatewayJobsClient:
         self.base_url = settings.FILE_GATEWAY_URL.rstrip("/")
         self.token = settings.FILE_GATEWAY_TOKEN
 
-    def _get_json(self, path: str) -> Any:
+    def _get_json(self, path: str, *, timeout: float = 5.0) -> Any:
         url = f"{self.base_url}{path}"
 
         req = urllib.request.Request(
@@ -29,7 +29,7 @@ class FileGatewayJobsClient:
             },
         )
 
-        with urllib.request.urlopen(req, timeout=5) as resp:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
             raw = resp.read()
 
         return json.loads(raw.decode("utf-8"))
@@ -44,7 +44,13 @@ class FileGatewayJobsClient:
         if not isinstance(jobs, list):
             return []
 
-        return [str(j).strip() for j in jobs if str(j).strip()]
+        out: List[str] = []
+        for item in jobs:
+            job_number = str(item).strip()
+            if job_number:
+                out.append(job_number)
+
+        return out
 
     def fetch_job(self, job_number: str) -> Dict[str, Any]:
         job = (job_number or "").strip()
@@ -83,5 +89,22 @@ class FileGatewayJobsClient:
                     "contractAmount": data.get("total_contract", ""),
                 }
             )
+
+        return out
+
+    def fetch_all_jobs_map(self) -> Dict[str, Dict[str, Any]]:
+        jobs = self.fetch_all_jobs()
+        out: Dict[str, Dict[str, Any]] = {}
+
+        for item in jobs:
+            if not isinstance(item, dict):
+                continue
+
+            job_number = str(item.get("jobNumber") or "").strip()
+            if not job_number:
+                continue
+
+            if job_number not in out:
+                out[job_number] = item
 
         return out

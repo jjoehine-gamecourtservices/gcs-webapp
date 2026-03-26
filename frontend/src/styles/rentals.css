@@ -2,6 +2,7 @@
   display: grid;
   grid-template-columns: minmax(280px, 1fr) minmax(0, 2fr);
   gap: 18px;
+  align-items: start;
 }
 
 .rentalsNav {
@@ -16,7 +17,8 @@
   background: #16233d;
   display: flex;
   flex-direction: column;
-  min-height: 420px;
+  align-self: start;
+  min-height: 0;
   overflow: hidden;
 }
 
@@ -61,11 +63,12 @@
 }
 
 .rentalsUpcomingBody {
-  flex: 1;
+  flex: 0 0 auto;
 }
 
 .rentalsUpcomingBodyList {
   min-height: 0;
+  max-height: 700px;
   overflow-y: auto;
   padding: 12px 14px 14px;
   box-sizing: border-box;

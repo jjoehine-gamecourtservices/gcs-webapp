@@ -103,11 +103,23 @@ export default function RentalsPage() {
   }, [rentals]);
 
   if (view.id === "rentals-list") {
-    return <RentalsListPage />;
+    return (
+      <RentalsListPage
+        onBack={() => {
+          setView({ id: "home" });
+        }}
+      />
+    );
   }
 
   if (view.id === "new-rental-request") {
-    return <NewRentalRequestPage />;
+    return (
+      <NewRentalRequestPage
+        onBack={() => {
+          setView({ id: "home" });
+        }}
+      />
+    );
   }
 
   return (

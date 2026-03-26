@@ -4,6 +4,7 @@ import threading
 
 from app.api.jobs import _refresh_all_jobs_pipeline
 from app.api.monday import _refresh_upcoming_jobs_cache
+from app.api.rentals import _refresh_rentals_cache
 from app.db.session import SessionLocal
 
 
@@ -36,9 +37,21 @@ def _run_all_jobs_refresh() -> None:
         db.close()
 
 
+def _run_rentals_refresh() -> None:
+    db = SessionLocal()
+    try:
+        _refresh_rentals_cache(db)
+        print("[cache-scheduler] refreshed rentals")
+    except Exception as e:
+        print(f"[cache-scheduler] rentals refresh failed: {e}")
+    finally:
+        db.close()
+
+
 def _run_all_refreshes() -> None:
     _run_upcoming_jobs_refresh()
     _run_all_jobs_refresh()
+    _run_rentals_refresh()
 
 
 def _worker() -> None:

@@ -17,6 +17,10 @@ import type {
   RentalRequestOption,
 } from "../../rentalrequest.types";
 
+type Props = {
+  onBack: () => void;
+};
+
 type ManageModalState =
   | { open: false }
   | { open: true; kind: "equipment" | "accessories" };
@@ -222,7 +226,7 @@ function ManageOptionsModal({
   );
 }
 
-export default function NewRentalRequestPage() {
+export default function NewRentalRequestPage({ onBack }: Props) {
   const [form, setForm] = useState<RentalRequestFormState>(emptyForm);
   const [errors, setErrors] = useState<RentalRequestFormErrors>({});
   const [submitMessage, setSubmitMessage] = useState("");
@@ -385,7 +389,33 @@ export default function NewRentalRequestPage() {
       <section className="rentalFormPage">
         <div className="rentalFormCard">
           <div className="rentalFormHeader">
-            <div className="rentalFormTitle">Rental Request</div>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "flex-start",
+                gap: 14,
+              }}
+            >
+              <button
+                type="button"
+                className="dashMiniPill"
+                style={{
+                  color: "rgba(255,255,255,0.92)",
+                  cursor: "pointer",
+                  width: "fit-content",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  flex: "0 0 auto",
+                }}
+                onClick={onBack}
+              >
+                Back
+              </button>
+
+              <div style={{ paddingTop: 2 }}>
+                <div className="rentalFormTitle">Rental Request</div>
+              </div>
+            </div>
 
             <button
               type="button"

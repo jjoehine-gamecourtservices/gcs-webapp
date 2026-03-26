@@ -23,7 +23,7 @@ class MondayItem:
     id: str
     name: str
     columns: Dict[str, MondayColumn]
-    job_number: str  # REQUIRED by upcoming-jobs
+    job_number: str
 
 
 class MondayClient:
@@ -37,9 +37,6 @@ class MondayClient:
         if not self._api_url:
             raise MondayAPIError("Missing Monday API URL")
 
-    # -------------------------------------------------
-    # Core request
-    # -------------------------------------------------
     def _post_graphql(self, query: str) -> Dict[str, Any]:
         payload = {"query": query}
         body = json.dumps(payload).encode("utf-8")
@@ -79,9 +76,6 @@ class MondayClient:
 
         return data.get("data") or {}
 
-    # -------------------------------------------------
-    # Used by upcoming-jobs
-    # -------------------------------------------------
     def list_board_jobs_basic(
         self,
         board_id: int,
@@ -136,9 +130,7 @@ class MondayClient:
                 cid = str(c.get("id") or "")
                 text = str(c.get("text") or "")
                 display = str(c.get("display_value") or "")
-
                 value = display if display else text
-
                 cols[cid] = MondayColumn(id=cid, text=value)
                 job_number = value
 
@@ -154,9 +146,6 @@ class MondayClient:
 
         return out
 
-    # -------------------------------------------------
-    # Used by master-json bulk sync
-    # -------------------------------------------------
     def list_board_items_columns(
         self,
         board_id: int,
@@ -212,9 +201,7 @@ class MondayClient:
                 cid = str(c.get("id") or "")
                 text = str(c.get("text") or "")
                 display = str(c.get("display_value") or "")
-
                 value = display if display else text
-
                 cols[cid] = MondayColumn(id=cid, text=value)
 
             if item_id:
@@ -263,18 +250,117 @@ class MondayClient:
             name = str(it.get("name") or "").strip()
             if not item_id or not name:
                 continue
+            out.append({"id": item_id, "name": name})
+
+        return out
+
+    def list_group_items_column_values(
+        self,
+        *,
+        board_id: int,
+        group_id: str,
+        column_ids: List[str],
+        limit: int = 100,
+    ) -> List[Dict[str, Any]]:
+        ids = [c.strip() for c in column_ids if c.strip()]
+        ids_json = json.dumps(ids)
+        group_json = json.dumps(str(group_id).strip())
+
+        query = f"""
+        query {{
+          boards(ids: {int(board_id)}) {{
+            groups(ids: [{group_json}]) {{
+              id
+              title
+              items_page(limit: {int(limit)}) {{
+                items {{
+                  id
+                  name
+                  column_values(ids: {ids_json}) {{
+                    id
+                    type
+                    text
+                    value
+
+                    ... on BoardRelationValue {{
+                      linked_item_ids
+                      linked_items {{
+                        id
+                        name
+                        board {{ id }}
+                      }}
+                    }}
+
+                    ... on MirrorValue {{
+                      display_value
+                    }}
+
+                    ... on FormulaValue {{
+                      display_value
+                    }}
+                  }}
+                }}
+              }}
+            }}
+          }}
+        }}
+        """
+
+        data = self._post_graphql(query)
+
+        boards = data.get("boards") or []
+        if not boards:
+            return []
+
+        groups = (boards[0] or {}).get("groups") or []
+        if not groups:
+            return []
+
+        items_page = (groups[0] or {}).get("items_page") or {}
+        items = items_page.get("items") or []
+
+        out: List[Dict[str, Any]] = []
+
+        for it in items:
+            item_id = str(it.get("id") or "").strip()
+            name = str(it.get("name") or "").strip()
+            if not item_id:
+                continue
+
+            cols_out: Dict[str, Dict[str, Any]] = {}
+            for c in it.get("column_values") or []:
+                cid = str(c.get("id") or "").strip()
+                if not cid:
+                    continue
+
+                entry: Dict[str, Any] = {
+                    "id": cid,
+                    "type": c.get("type") or "",
+                    "text": str(c.get("text") or ""),
+                    "value": str(c.get("value") or ""),
+                }
+
+                if "display_value" in c:
+                    entry["display_value"] = str(c.get("display_value") or "")
+
+                if "linked_item_ids" in c:
+                    entry["linked_item_ids"] = c.get("linked_item_ids") or []
+
+                if "linked_items" in c:
+                    entry["linked_items"] = c.get("linked_items") or []
+
+                cols_out[cid] = entry
+
             out.append(
                 {
                     "id": item_id,
                     "name": name,
+                    "columns": cols_out,
                 }
             )
 
         return out
 
-    # -------------------------------------------------
-    # Used by debug + master-json
-    # -------------------------------------------------
     def get_item_basic(self, item_id: str) -> Dict[str, Any]:
         iid = str(item_id).strip()
 
@@ -301,6 +387,79 @@ class MondayClient:
             "name": it.get("name") or "",
             "board_id": str(board.get("id") or ""),
         }
+
+    def get_item_columns(
+        self,
+        *,
+        item_id: str,
+        column_ids: List[str],
+    ) -> Dict[str, Dict[str, Any]]:
+        iid = str(item_id).strip()
+        ids = [c.strip() for c in column_ids if c.strip()]
+        ids_json = json.dumps(ids)
+
+        query = f"""
+        query {{
+          items(ids: [{json.dumps(iid)}]) {{
+            id
+            name
+            board {{ id }}
+            column_values(ids: {ids_json}) {{
+              id
+              type
+              text
+              value
+
+              ... on BoardRelationValue {{
+                linked_item_ids
+                linked_items {{
+                  id
+                  name
+                  board {{ id }}
+                }}
+              }}
+
+              ... on MirrorValue {{
+                display_value
+              }}
+
+              ... on FormulaValue {{
+                display_value
+              }}
+            }}
+          }}
+        }}
+        """
+
+        data = self._post_graphql(query)
+        items = data.get("items") or []
+        if not items:
+            raise MondayAPIError(f"Item not found: {iid}")
+
+        cols_list = (items[0] or {}).get("column_values") or []
+        out: Dict[str, Dict[str, Any]] = {}
+
+        for c in cols_list:
+            cid = str(c.get("id") or "")
+            entry: Dict[str, Any] = {
+                "id": cid,
+                "type": c.get("type") or "",
+                "text": str(c.get("text") or ""),
+                "value": str(c.get("value") or ""),
+            }
+
+            if "display_value" in c:
+                entry["display_value"] = str(c.get("display_value") or "")
+
+            if "linked_item_ids" in c:
+                entry["linked_item_ids"] = c.get("linked_item_ids") or []
+
+            if "linked_items" in c:
+                entry["linked_items"] = c.get("linked_items") or []
+
+            out[cid] = entry
+
+        return out
 
     def get_item_all_column_values(self, item_id: str) -> Dict[str, Dict[str, Any]]:
         iid = str(item_id).strip()
@@ -366,9 +525,6 @@ class MondayClient:
 
         return out
 
-    # -------------------------------------------------
-    # Mutations
-    # -------------------------------------------------
     def change_simple_column_value(
         self,
         *,
@@ -399,6 +555,37 @@ class MondayClient:
         changed_id = str(changed.get("id") or "")
         if not changed_id:
             raise MondayAPIError("Monday did not return an item id for change_simple_column_value")
+        return changed_id
+
+    def change_multiple_column_values(
+        self,
+        *,
+        board_id: int,
+        item_id: str,
+        column_values: Dict[str, Any],
+        create_labels_if_missing: bool = False,
+    ) -> str:
+        iid = str(item_id).strip()
+        values_json = json.dumps(column_values or {}, ensure_ascii=False)
+
+        query = f"""
+        mutation {{
+          change_multiple_column_values(
+            item_id: {json.dumps(iid)},
+            board_id: {int(board_id)},
+            column_values: {json.dumps(values_json)},
+            create_labels_if_missing: {"true" if create_labels_if_missing else "false"}
+          ) {{
+            id
+          }}
+        }}
+        """
+
+        data = self._post_graphql(query)
+        changed = data.get("change_multiple_column_values") or {}
+        changed_id = str(changed.get("id") or "")
+        if not changed_id:
+            raise MondayAPIError("Monday did not return an item id for change_multiple_column_values")
         return changed_id
 
     def change_item_name(

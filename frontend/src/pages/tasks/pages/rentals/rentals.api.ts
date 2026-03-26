@@ -20,6 +20,17 @@ type RentalActionResponse = {
   itemName: string;
 };
 
+async function readError(r: Response): Promise<string> {
+  let detail = "";
+  try {
+    const data = await r.json();
+    detail = typeof data?.detail === "string" ? data.detail : JSON.stringify(data);
+  } catch {
+    detail = await r.text().catch(() => "");
+  }
+  return `HTTP ${r.status}${detail ? `: ${detail}` : ""}`;
+}
+
 export async function fetchRentals(): Promise<RentalListItem[]> {
   const r = await fetch("/api/rentals", {
     method: "GET",
@@ -28,8 +39,22 @@ export async function fetchRentals(): Promise<RentalListItem[]> {
   });
 
   if (!r.ok) {
-    const text = await r.text().catch(() => "");
-    throw new Error(`HTTP ${r.status}${text ? `: ${text}` : ""}`);
+    throw new Error(await readError(r));
+  }
+
+  const data = (await r.json()) as RentalsResponse;
+  return Array.isArray(data.rentals) ? data.rentals : [];
+}
+
+export async function refreshRentals(): Promise<RentalListItem[]> {
+  const r = await fetch("/api/rentals/refresh", {
+    method: "POST",
+    credentials: "include",
+    headers: { Accept: "application/json" },
+  });
+
+  if (!r.ok) {
+    throw new Error(await readError(r));
   }
 
   const data = (await r.json()) as RentalsResponse;
@@ -48,14 +73,7 @@ export async function runRentalAction(itemId: string, action: RentalAction): Pro
   });
 
   if (!r.ok) {
-    let detail = "";
-    try {
-      const data = await r.json();
-      detail = typeof data?.detail === "string" ? data.detail : JSON.stringify(data);
-    } catch {
-      detail = await r.text().catch(() => "");
-    }
-    throw new Error(`HTTP ${r.status}${detail ? `: ${detail}` : ""}`);
+    throw new Error(await readError(r));
   }
 
   return (await r.json()) as RentalActionResponse;
@@ -69,14 +87,7 @@ export async function fetchRentalQuoteVendors(): Promise<RentalQuoteVendor[]> {
   });
 
   if (!r.ok) {
-    let detail = "";
-    try {
-      const data = await r.json();
-      detail = typeof data?.detail === "string" ? data.detail : JSON.stringify(data);
-    } catch {
-      detail = await r.text().catch(() => "");
-    }
-    throw new Error(`HTTP ${r.status}${detail ? `: ${detail}` : ""}`);
+    throw new Error(await readError(r));
   }
 
   const data = (await r.json()) as RentalQuoteVendorsResponse;

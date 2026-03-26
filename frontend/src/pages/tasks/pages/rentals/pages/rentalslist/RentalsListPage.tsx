@@ -1,4 +1,5 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import LoadingProgressOverlay from "../../../../../../components/LoadingProgressOverlay";
 import type { RentalListItem, RentalQuoteVendor } from "../../rentals.types";
 import { fetchRentalQuoteVendors, runRentalAction } from "../../rentals.api";
 import useRentals from "../../state/useRentals";
@@ -13,6 +14,10 @@ type QuoteVendorRow = RentalQuoteVendor & {
 type QuoteModalState =
   | { open: false }
   | { open: true; mode: QuoteModalMode; rental: RentalListItem };
+
+type Props = {
+  onBack: () => void;
+};
 
 function normalizeText(value?: string): string {
   return (value ?? "").trim();
@@ -165,6 +170,9 @@ function namesMatch(a?: string, b?: string): boolean {
 }
 
 function launchMailto(href: string) {
+  const popup = window.open(href, "_blank", "noopener,noreferrer");
+  if (popup) return;
+
   const link = document.createElement("a");
   link.href = href;
   link.style.display = "none";
@@ -173,8 +181,32 @@ function launchMailto(href: string) {
   document.body.removeChild(link);
 }
 
-export default function RentalsListPage() {
-  const { rentals, loading, refreshing, reload, error } = useRentals();
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, ms);
+  });
+}
+
+async function openMailtoDraftsSequentially(
+  drafts: Array<{ email: string; subject: string; body: string }>
+): Promise<void> {
+  for (let i = 0; i < drafts.length; i += 1) {
+    const draft = drafts[i];
+    const href =
+      `mailto:${escapeMailtoValue(draft.email)}` +
+      `?subject=${escapeMailtoValue(draft.subject)}` +
+      `&body=${escapeMailtoValue(draft.body)}`;
+
+    launchMailto(href);
+
+    if (i < drafts.length - 1) {
+      await wait(900);
+    }
+  }
+}
+
+export default function RentalsListPage({ onBack }: Props) {
+  const { rentals, loading, refreshing, reload, error, patchRental } = useRentals();
   const [selectedRentalId, setSelectedRentalId] = useState<string>("");
   const [actionRentalId, setActionRentalId] = useState<string>("");
   const [actionError, setActionError] = useState<string>("");
@@ -185,6 +217,12 @@ export default function RentalsListPage() {
   const [vendorsError, setVendorsError] = useState("");
   const [vendorsLoaded, setVendorsLoaded] = useState(false);
   const [drafting, setDrafting] = useState(false);
+
+  const [progressOpen, setProgressOpen] = useState(false);
+  const [progressLabel, setProgressLabel] = useState("");
+  const [progressValue, setProgressValue] = useState(0);
+
+  const progressTimerRef = useRef<number | null>(null);
 
   const selectedRental = useMemo(() => {
     return rentals.find((r) => r.id === selectedRentalId) ?? null;
@@ -201,6 +239,58 @@ export default function RentalsListPage() {
       setSelectedRentalId(rentals[0].id);
     }
   }, [rentals, selectedRentalId]);
+
+  useEffect(() => {
+    return () => {
+      if (progressTimerRef.current !== null) {
+        window.clearInterval(progressTimerRef.current);
+      }
+    };
+  }, []);
+
+  function stopProgressAnimation() {
+    if (progressTimerRef.current !== null) {
+      window.clearInterval(progressTimerRef.current);
+      progressTimerRef.current = null;
+    }
+  }
+
+  function startProgressAnimation(maxValue: number) {
+    stopProgressAnimation();
+
+    progressTimerRef.current = window.setInterval(() => {
+      setProgressValue((current) => {
+        if (current >= maxValue) return current;
+        const remaining = maxValue - current;
+        const step = Math.max(0.45, remaining * 0.055);
+        const next = current + step;
+        return next > maxValue ? maxValue : next;
+      });
+    }, 80);
+  }
+
+  function openProgress(label: string) {
+    setProgressLabel(label);
+    setProgressValue(5);
+    setProgressOpen(true);
+    startProgressAnimation(52);
+  }
+
+  function advanceProgress(target: number) {
+    setProgressValue((current) => (current < target ? target : current));
+    startProgressAnimation(target);
+  }
+
+  function closeProgress() {
+    stopProgressAnimation();
+    setProgressValue(100);
+
+    window.setTimeout(() => {
+      setProgressOpen(false);
+      setProgressLabel("");
+      setProgressValue(0);
+    }, 180);
+  }
 
   function applyVendorSelection(vendors: RentalQuoteVendor[], rental: RentalListItem): QuoteVendorRow[] {
     return vendors.map((vendor) => ({
@@ -247,7 +337,6 @@ export default function RentalsListPage() {
   function closeQuoteModal() {
     setModalState({ open: false });
     setVendorsError("");
-    setDrafting(false);
   }
 
   function toggleVendor(vendorId: string) {
@@ -268,8 +357,8 @@ export default function RentalsListPage() {
     await loadQuoteVendors(modalState.rental, true);
   }
 
-  function openDraftsForSelectedVendors() {
-    if (!modalState.open) return;
+  async function openDraftsForSelectedVendors() {
+    if (!modalState.open || drafting) return;
 
     const selectedVendors = quoteVendors.filter((vendor) => vendor.checked);
     if (selectedVendors.length === 0) {
@@ -278,23 +367,22 @@ export default function RentalsListPage() {
     }
 
     const currentModal = modalState;
+    const drafts = selectedVendors.map((vendor) => ({
+      email: vendor.email,
+      subject: buildEmailSubject(currentModal.mode, currentModal.rental),
+      body: buildEmailBody(currentModal.mode, currentModal.rental, vendor),
+    }));
 
     setDrafting(true);
     setVendorsError("");
-    closeQuoteModal();
 
-    setTimeout(() => {
-      try {
-        for (const vendor of selectedVendors) {
-          const subject = buildEmailSubject(currentModal.mode, currentModal.rental);
-          const body = buildEmailBody(currentModal.mode, currentModal.rental, vendor);
-          const href = `mailto:${escapeMailtoValue(vendor.email)}?subject=${escapeMailtoValue(subject)}&body=${escapeMailtoValue(body)}`;
-          launchMailto(href);
-        }
-      } finally {
-        setDrafting(false);
-      }
-    }, 50);
+    try {
+      closeQuoteModal();
+      await wait(150);
+      await openMailtoDraftsSequentially(drafts);
+    } finally {
+      setDrafting(false);
+    }
   }
 
   async function runAction(rental: RentalListItem, action: "reserved" | "cancel" | "on_rent" | "off_rent") {
@@ -302,14 +390,37 @@ export default function RentalsListPage() {
 
     setActionError("");
     setActionRentalId(rental.id);
+    openProgress("Updating rental...");
 
     try {
-      await runRentalAction(rental.id, action);
-      await reload();
+      const result = await runRentalAction(rental.id, action);
+      advanceProgress(82);
+
+      patchRental(rental.id, {
+        status: result.newStatus,
+        itemName: result.itemName,
+      });
+
+      closeProgress();
     } catch (e: any) {
+      closeProgress();
       setActionError(e?.message ? String(e.message) : "Failed to update rental");
     } finally {
       setActionRentalId("");
+    }
+  }
+
+  async function runRefresh() {
+    setActionError("");
+    openProgress("Refreshing rentals...");
+
+    try {
+      await reload();
+      advanceProgress(88);
+      closeProgress();
+    } catch (e: any) {
+      closeProgress();
+      setActionError(e?.message ? String(e.message) : "Failed to refresh rentals");
     }
   }
 
@@ -326,7 +437,11 @@ export default function RentalsListPage() {
         selectedRentalId={selectedRentalId}
         actionRentalId={actionRentalId}
         actionError={visibleError}
+        onBack={onBack}
         onSelectRental={setSelectedRentalId}
+        onRefresh={() => {
+          void runRefresh();
+        }}
         onRequestQuote={(rental) => openQuoteModal("request-quote", rental)}
         onReschedule={(rental) => openQuoteModal("reschedule", rental)}
         onReserved={(rental) => {
@@ -497,7 +612,9 @@ export default function RentalsListPage() {
                 type="button"
                 className="dashMiniPill"
                 style={{ color: "rgba(255,255,255,0.92)", cursor: drafting ? "default" : "pointer" }}
-                onClick={openDraftsForSelectedVendors}
+                onClick={() => {
+                  void openDraftsForSelectedVendors();
+                }}
                 disabled={drafting || vendorsLoading || quoteVendors.length === 0}
               >
                 {drafting
@@ -510,6 +627,12 @@ export default function RentalsListPage() {
           </div>
         </div>
       ) : null}
+
+      <LoadingProgressOverlay
+        open={progressOpen}
+        label={progressLabel}
+        progress={progressValue}
+      />
     </>
   );
 }

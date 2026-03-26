@@ -33,6 +33,27 @@ function formatPhone(value?: string): string {
   return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
 }
 
+function formatDateMmDdYyyy(value?: string): string {
+  const raw = (value ?? "").trim();
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(raw);
+  if (!match) return raw || "-";
+
+  const [, year, month, day] = match;
+  return `${month}-${day}-${year}`;
+}
+
+function formatDateRange(value?: string): string {
+  const raw = (value ?? "").trim();
+  if (!raw) return "-";
+
+  const parts = raw.split(" - ").map((part) => part.trim()).filter(Boolean);
+  if (parts.length >= 2) {
+    return `${formatDateMmDdYyyy(parts[0])} - ${formatDateMmDdYyyy(parts[1])}`;
+  }
+
+  return formatDateMmDdYyyy(raw);
+}
+
 function joinNamePhone(name?: string, phone?: string): string {
   const n = (name ?? "").trim();
   const p = formatPhone(phone);
@@ -173,7 +194,7 @@ export default function RentalCard({
     () => joinNamePhone(rental.deliveryContact, rental.deliveryCellContact),
     [rental.deliveryContact, rental.deliveryCellContact]
   );
-  const dateRange = useMemo(() => normalizeDisplay(rental.dateRange), [rental.dateRange]);
+  const dateRange = useMemo(() => formatDateRange(rental.dateRange), [rental.dateRange]);
   const status = useMemo(() => normalizeDisplay(rental.status), [rental.status]);
 
   const cardStyle: React.CSSProperties = {

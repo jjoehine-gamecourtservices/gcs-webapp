@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_current_user
 from app.core.config import settings
 from app.db.session import db_dependency
-from app.integrations.file_gateway_client import safe_fetch_job_card_fields
+from app.integrations.file_gateway_jobs_client import FileGatewayJobsClient
 from app.integrations.monday_client import MondayAPIError, MondayClient
 from app.services.app_cache import (
     get_cache_record,
@@ -28,21 +28,27 @@ MAIN_BOARD_ID = 7173069739
 TIMELINE_COL_ID = "timeline__1"
 JOB_NUMBER_COL_ID = "mirror0__1"
 STATUS_COL_ID = "status"
+INSTALLER_COL_ID = "Installer"
 
 EMPLOYEE_BOARD_ID = 7099018002
 EMPLOYEE_PHONE_COL_ID = "cell__1"
 
-_VALID_EVENT_RE = re.compile(r"^\s*[^@]+@\s*.+$")
+ALL_JOBS_CACHE_KEY = "all_jobs"
+UPCOMING_JOBS_CACHE_KEY = "upcoming_jobs"
 
-MAX_UNIQUE_GATEWAY_FETCHES = 50
+_VALID_EVENT_RE = re.compile(r"^\s*[^@]+@\s*.+$")
 EXCLUDED_STATUS_TEXT = "Game Court Emp."
 
-UPCOMING_JOBS_CACHE_KEY = "upcoming_jobs"
+UPCOMING_JOBS_BULK_COLUMN_IDS: List[str] = [
+    INSTALLER_COL_ID,
+    TIMELINE_COL_ID,
+    JOB_NUMBER_COL_ID,
+    STATUS_COL_ID,
+]
 
 
 class UpcomingJob(BaseModel):
     id: str
-
     jobName: str
     jobNumber: str = ""
     address: Optional[str] = None
@@ -52,7 +58,6 @@ class UpcomingJob(BaseModel):
     super: Optional[str] = None
     superContact: Optional[str] = None
     pm: Optional[str] = None
-
     installer: str = "None"
     installerContact: str = "None"
     startDate: Optional[str] = None
@@ -85,10 +90,20 @@ class RentalQuoteVendorsResponse(BaseModel):
 def parse_timeline_column(text: str) -> Tuple[Optional[date], Optional[date]]:
     if not text:
         return None, None
+
+    raw = str(text).strip()
+    if not raw:
+        return None, None
+
     try:
-        parts = text.split(",") if "," in text else text.split(" - ")
+        if "," in raw:
+            parts = raw.split(",", 1)
+        else:
+            parts = raw.split(" - ", 1)
+
         start_str = parts[0].strip()
         end_str = parts[1].strip() if len(parts) > 1 else start_str
+
         start = datetime.strptime(start_str, "%Y-%m-%d").date()
         end = datetime.strptime(end_str, "%Y-%m-%d").date()
         return start, end
@@ -116,8 +131,10 @@ def parse_job_name_right_of_at(item_name: str) -> str:
     job_part = right.strip()
     if not job_part:
         return ""
+
     if " - " in job_part:
         job_part = job_part.split(" - ", 1)[0].strip()
+
     return job_part
 
 
@@ -130,32 +147,45 @@ def first_name_from_installer_list(names_left: str) -> str:
 def format_phone(text: str) -> str:
     if not text:
         return "None"
+
     digits = re.sub(r"\D", "", text)
     if len(digits) == 11 and digits.startswith("1"):
         digits = digits[1:]
+
     if len(digits) == 10:
         return f"({digits[0:3]}) {digits[3:6]}-{digits[6:10]}"
-    trimmed = text.strip()
+
+    trimmed = str(text).strip()
     return trimmed if trimmed else "None"
 
 
 def build_employee_phone_map(employee_items_basic) -> Dict[str, str]:
     out: Dict[str, str] = {}
+
     for it in employee_items_basic:
         full_name = (it.name or "").strip()
         if not full_name:
             continue
+
         first = full_name.split(" ", 1)[0].strip().lower()
         if not first:
             continue
+
         phone_raw = (it.job_number or "").strip()
         if first not in out:
             out[first] = format_phone(phone_raw)
+
     return out
 
 
 def bucket_date(start_d: date, today: date) -> date:
     return today if start_d < today else start_d
+
+
+def _clean_str(value: Any) -> str:
+    if value is None:
+        return ""
+    return str(value).strip()
 
 
 def _monday_client() -> MondayClient:
@@ -192,23 +222,50 @@ def _deserialize_jobs_payload(payload: Any) -> UpcomingJobsResponse:
     return UpcomingJobsResponse(jobs=jobs)
 
 
-def _has_gateway_job_card_data(fields: Dict[str, Optional[str]]) -> bool:
-    return any(
-        (fields.get(key) or "").strip()
-        for key in (
-            "jobName",
-            "address",
-            "generalContractor",
-            "gcpm",
-            "gcpmContact",
-            "super",
-            "superContact",
-            "pm",
-        )
-    )
+def _build_all_jobs_map_from_payload(payload: Any) -> Dict[str, Dict[str, Any]]:
+    if not isinstance(payload, dict):
+        return {}
+
+    raw_jobs = payload.get("jobs")
+    if not isinstance(raw_jobs, list):
+        return {}
+
+    out: Dict[str, Dict[str, Any]] = {}
+
+    for item in raw_jobs:
+        if not isinstance(item, dict):
+            continue
+
+        job_number = _clean_str(item.get("jobNumber"))
+        if not job_number:
+            continue
+
+        if job_number not in out:
+            out[job_number] = item
+
+    return out
 
 
-def _build_upcoming_jobs_payload(client: MondayClient) -> UpcomingJobsResponse:
+def _build_gateway_job_map_from_all_jobs_cache(db: Session) -> Dict[str, Dict[str, Any]]:
+    cached = get_cache_record(db, ALL_JOBS_CACHE_KEY)
+    if cached is None:
+        return {}
+
+    return _build_all_jobs_map_from_payload(cached.get("payload"))
+
+
+def _build_gateway_job_map_with_fallback(db: Session) -> Dict[str, Dict[str, Any]]:
+    cached_map = _build_gateway_job_map_from_all_jobs_cache(db)
+    if cached_map:
+        return cached_map
+
+    try:
+        return FileGatewayJobsClient().fetch_all_jobs_map()
+    except Exception:
+        return {}
+
+
+def _build_upcoming_jobs_payload(db: Session, client: MondayClient) -> UpcomingJobsResponse:
     today = date.today()
 
     try:
@@ -222,117 +279,68 @@ def _build_upcoming_jobs_payload(client: MondayClient) -> UpcomingJobsResponse:
         employee_phone_by_first = {}
 
     try:
-        installer_items = client.list_board_jobs_basic(
+        items = client.list_board_items_columns(
             board_id=MAIN_BOARD_ID,
-            job_column_id="Installer",
-            limit=200,
-        )
-
-        timeline_items = client.list_board_jobs_basic(
-            board_id=MAIN_BOARD_ID,
-            job_column_id=TIMELINE_COL_ID,
-            limit=200,
-        )
-
-        job_number_items = client.list_board_jobs_basic(
-            board_id=MAIN_BOARD_ID,
-            job_column_id=JOB_NUMBER_COL_ID,
-            limit=200,
-        )
-
-        status_items = client.list_board_jobs_basic(
-            board_id=MAIN_BOARD_ID,
-            job_column_id=STATUS_COL_ID,
+            column_ids=UPCOMING_JOBS_BULK_COLUMN_IDS,
             limit=200,
         )
     except MondayAPIError as e:
         raise HTTPException(status_code=502, detail=str(e))
 
-    timeline_map: Dict[str, str] = {t.id: (t.job_number or "").strip() for t in timeline_items}
-    job_number_map: Dict[str, str] = {j.id: (j.job_number or "").strip() for j in job_number_items}
-    status_map: Dict[str, str] = {s.id: (s.job_number or "").strip() for s in status_items}
-
-    gateway_cache: Dict[str, Dict[str, Optional[str]]] = {}
-    gateway_fetches = 0
-
+    gateway_jobs_by_number = _build_gateway_job_map_with_fallback(db)
     jobs_out: List[UpcomingJob] = []
 
-    for inst in installer_items:
-        item_name = inst.name or ""
+    for item in items:
+        item_name = _clean_str(item.name)
         if not is_valid_event_name(item_name):
             continue
 
-        status_text = status_map.get(inst.id, "").strip()
+        cols = item.columns or {}
+
+        installer_text = _clean_str(cols.get(INSTALLER_COL_ID).text if cols.get(INSTALLER_COL_ID) else "")
+        timeline_text = _clean_str(cols.get(TIMELINE_COL_ID).text if cols.get(TIMELINE_COL_ID) else "")
+        job_number = _clean_str(cols.get(JOB_NUMBER_COL_ID).text if cols.get(JOB_NUMBER_COL_ID) else "")
+        status_text = _clean_str(cols.get(STATUS_COL_ID).text if cols.get(STATUS_COL_ID) else "")
+
         if status_text == EXCLUDED_STATUS_TEXT:
             continue
 
-        timeline_text = timeline_map.get(inst.id, "")
         start_d, end_d = parse_timeline_column(timeline_text)
         if not start_d or not end_d or end_d < today:
             continue
 
-        installer_names = parse_installer_names_left_of_at(item_name)
+        installer_names = installer_text or parse_installer_names_left_of_at(item_name)
         if not installer_names:
             continue
 
-        parsed_job_name = parse_job_name_right_of_at(item_name)
-        if not parsed_job_name:
-            continue
-
-        first = first_name_from_installer_list(installer_names).lower()
-        contact = employee_phone_by_first.get(first, "None")
-
-        job_number = job_number_map.get(inst.id, "").strip()
         if not job_number:
             continue
 
-        cached = gateway_cache.get(job_number)
-        if cached is None:
-            if gateway_fetches < MAX_UNIQUE_GATEWAY_FETCHES:
-                gateway_fetches += 1
-                cached = safe_fetch_job_card_fields(job_number)
-            else:
-                cached = {
-                    "jobName": None,
-                    "address": None,
-                    "generalContractor": None,
-                    "gcpm": None,
-                    "gcpmContact": None,
-                    "super": None,
-                    "superContact": None,
-                    "pm": None,
-                }
-            gateway_cache[job_number] = cached
-
-        if not _has_gateway_job_card_data(cached):
+        gateway_job = gateway_jobs_by_number.get(job_number)
+        if not gateway_job:
             continue
 
-        card_job_name = parsed_job_name
-        if cached.get("jobName"):
-            card_job_name = str(cached["jobName"])
+        card_job_name = _clean_str(gateway_job.get("jobName")) or parse_job_name_right_of_at(item_name)
+        if not card_job_name:
+            continue
 
-        address = cached.get("address")
-        gc = cached.get("generalContractor")
-        gcpm = cached.get("gcpm")
-        gcpm_contact = cached.get("gcpmContact")
-        job_super = cached.get("super")
-        super_contact = cached.get("superContact")
-        pm = cached.get("pm")
+        first = first_name_from_installer_list(installer_names).lower()
+        installer_contact = employee_phone_by_first.get(first, "None")
 
         jobs_out.append(
             UpcomingJob(
-                id=inst.id,
+                id=_clean_str(item.id),
                 jobName=card_job_name,
                 jobNumber=job_number,
-                address=address,
-                generalContractor=gc,
-                gcpm=gcpm,
-                gcpmContact=gcpm_contact,
-                super=job_super,
-                superContact=super_contact,
-                pm=pm,
+                address=_clean_str(gateway_job.get("address")) or None,
+                generalContractor=_clean_str(gateway_job.get("generalContractor")) or None,
+                gcpm=_clean_str(gateway_job.get("gcpm")) or None,
+                gcpmContact=_clean_str(gateway_job.get("gcpmContact")) or None,
+                super=_clean_str(gateway_job.get("super")) or None,
+                superContact=_clean_str(gateway_job.get("superContact")) or None,
+                pm=_clean_str(gateway_job.get("pm")) or None,
                 installer=installer_names,
-                installerContact=contact,
+                installerContact=installer_contact,
                 startDate=start_d.isoformat(),
                 endDate=end_d.isoformat(),
             )
@@ -354,7 +362,7 @@ def _refresh_upcoming_jobs_cache(db: Session) -> UpcomingJobsResponse:
     mark_cache_refresh_started(db, UPCOMING_JOBS_CACHE_KEY)
 
     try:
-        response = _build_upcoming_jobs_payload(client)
+        response = _build_upcoming_jobs_payload(db, client)
         upsert_cache_record(
             db,
             cache_key=UPCOMING_JOBS_CACHE_KEY,

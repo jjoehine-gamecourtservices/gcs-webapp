@@ -10,6 +10,27 @@ function normalizeDisplay(value?: string): string {
   return v || "-";
 }
 
+function formatDateMmDdYyyy(value?: string): string {
+  const raw = (value ?? "").trim();
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(raw);
+  if (!match) return raw || "-";
+
+  const [, year, month, day] = match;
+  return `${month}-${day}-${year}`;
+}
+
+function formatDateRange(value?: string): string {
+  const raw = (value ?? "").trim();
+  if (!raw) return "-";
+
+  const parts = raw.split(" - ").map((part) => part.trim()).filter(Boolean);
+  if (parts.length >= 2) {
+    return `${formatDateMmDdYyyy(parts[0])} - ${formatDateMmDdYyyy(parts[1])}`;
+  }
+
+  return formatDateMmDdYyyy(raw);
+}
+
 function getStatusPillClass(status: string): string {
   const normalized = (status ?? "").trim().toLowerCase();
 
@@ -31,7 +52,7 @@ export default function UpcomingRentalRow({ rental }: Props) {
     return `${name} - ${num}`;
   }, [rental.jobName, rental.jobNumber]);
 
-  const dateRange = useMemo(() => normalizeDisplay(rental.dateRange), [rental.dateRange]);
+  const dateRange = useMemo(() => formatDateRange(rental.dateRange), [rental.dateRange]);
   const status = useMemo(() => normalizeDisplay(rental.status), [rental.status]);
 
   return (

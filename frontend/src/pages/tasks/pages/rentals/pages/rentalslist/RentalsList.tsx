@@ -142,11 +142,6 @@ export default function RentalsList({
               }}
             >
               <div className="dashMuted">Active / Upcoming</div>
-              {refreshing ? (
-                <div className="dashMuted" style={{ fontSize: 12 }}>
-                  Refreshing...
-                </div>
-              ) : null}
             </div>
 
             {currentRentals.length === 0 ? (
@@ -157,7 +152,7 @@ export default function RentalsList({
                   <RentalCard
                     rental={rental}
                     isSelected={selectedRentalId === rental.id}
-                    isActionLoading={actionRentalId === rental.id}
+                    isActionLoading={actionRentalId === rental.id || refreshing}
                     onClick={() => onSelectRental(rental.id)}
                     onRequestQuote={() => onRequestQuote(rental)}
                     onReschedule={() => onReschedule(rental)}
@@ -184,7 +179,7 @@ export default function RentalsList({
                   <RentalCard
                     rental={rental}
                     isSelected={selectedRentalId === rental.id}
-                    isActionLoading={actionRentalId === rental.id}
+                    isActionLoading={actionRentalId === rental.id || refreshing}
                     onClick={() => onSelectRental(rental.id)}
                     onRequestQuote={() => onRequestQuote(rental)}
                     onReschedule={() => onReschedule(rental)}

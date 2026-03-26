@@ -5,17 +5,27 @@ from typing import Any, Dict, List, Optional, Set
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
+from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user
 from app.core.config import settings
+from app.db.session import db_dependency
 from app.integrations.file_gateway_jobs_client import FileGatewayJobsClient
 from app.integrations.monday_client import MondayAPIError, MondayClient
+from app.services.app_cache import (
+    get_cache_record,
+    mark_cache_refresh_failed,
+    mark_cache_refresh_started,
+    upsert_cache_record,
+    utc_now_iso,
+)
 
 router = APIRouter()
 
 RENTALS_BOARD_ID = 7173069739
 RENTALS_GROUP_ID = "rental_equipment__1"
 RENTALS_STATUS_COL_ID = "status__1"
+RENTALS_CACHE_KEY = "rentals"
 
 DEBUG_COLUMN_IDS: Dict[str, str] = {
     "timeline": "timeline__1",
@@ -37,6 +47,31 @@ DEBUG_COLUMN_IDS: Dict[str, str] = {
     "accessories": "dropdown82__1",
 }
 
+RENTALS_BULK_COLUMN_IDS: List[str] = [
+    DEBUG_COLUMN_IDS["timeline"],
+    DEBUG_COLUMN_IDS["location"],
+    DEBUG_COLUMN_IDS["address_lookup"],
+    DEBUG_COLUMN_IDS["job_name"],
+    DEBUG_COLUMN_IDS["job_number"],
+    DEBUG_COLUMN_IDS["notes"],
+    DEBUG_COLUMN_IDS["status"],
+    DEBUG_COLUMN_IDS["equipment_type"],
+    DEBUG_COLUMN_IDS["size"],
+    DEBUG_COLUMN_IDS["company"],
+    DEBUG_COLUMN_IDS["company_cell_contact"],
+    DEBUG_COLUMN_IDS["drivetrain"],
+    DEBUG_COLUMN_IDS["delivery_time"],
+    DEBUG_COLUMN_IDS["delivery_contact"],
+    DEBUG_COLUMN_IDS["delivery_cell_contact"],
+    DEBUG_COLUMN_IDS["budget"],
+    DEBUG_COLUMN_IDS["accessories"],
+]
+
+RENTALS_ACTION_READ_COLUMN_IDS: List[str] = [
+    DEBUG_COLUMN_IDS["job_name"],
+    DEBUG_COLUMN_IDS["status"],
+]
+
 
 class RentalActionRequest(BaseModel):
     action: str
@@ -49,6 +84,20 @@ class RentalActionResponse(BaseModel):
     previousStatus: str
     newStatus: str
     itemName: str
+
+
+class RentalsResponse(BaseModel):
+    rentals: List[Dict[str, Any]]
+    count: int
+
+
+class RentalsCacheMetaResponse(BaseModel):
+    cacheKey: str
+    updatedAt: str
+    refreshStartedAt: str | None = None
+    refreshFinishedAt: str | None = None
+    refreshError: str | None = None
+    count: int
 
 
 _ALLOWED_TRANSITIONS: Dict[str, Dict[str, Any]] = {
@@ -95,48 +144,6 @@ def _safe_parse_json_nullable(raw: Any) -> Any:
         return json.loads(s)
     except Exception as e:
         return {"__parse_error__": str(e), "__raw__": s}
-
-
-def _query_group_items_basic(*, client: MondayClient, board_id: int, group_id: str, limit: int = 100) -> List[Dict[str, Any]]:
-    query = f"""
-    query {{
-      boards(ids: {int(board_id)}) {{
-        groups(ids: [{json.dumps(group_id)}]) {{
-          id
-          title
-          items_page(limit: {int(limit)}) {{
-            items {{
-              id
-              name
-            }}
-          }}
-        }}
-      }}
-    }}
-    """
-
-    data = client._post_graphql(query)
-
-    boards = data.get("boards") or []
-    if not boards:
-        return []
-
-    groups = (boards[0] or {}).get("groups") or []
-    if not groups:
-        return []
-
-    items_page = (groups[0] or {}).get("items_page") or {}
-    items = items_page.get("items") or []
-
-    out: List[Dict[str, Any]] = []
-    for it in items:
-        out.append(
-            {
-                "id": str(it.get("id") or ""),
-                "name": str(it.get("name") or ""),
-            }
-        )
-    return out
 
 
 def _clean_str(value: Any) -> str:
@@ -273,6 +280,166 @@ def _build_rental_item_name(job_name: str, status_text: str) -> str:
     return f"Rental - {_clean_str(job_name)} - {_clean_str(status_text)}"
 
 
+def _serialize_rentals_payload(rentals: List[Dict[str, Any]]) -> Dict[str, Any]:
+    return {
+        "rentals": rentals,
+        "count": len(rentals),
+    }
+
+
+def _deserialize_rentals_payload(payload: Any) -> RentalsResponse:
+    if not isinstance(payload, dict):
+        return RentalsResponse(rentals=[], count=0)
+
+    raw_rentals = payload.get("rentals")
+    if not isinstance(raw_rentals, list):
+        raw_rentals = []
+
+    rentals: List[Dict[str, Any]] = []
+    for item in raw_rentals:
+        if isinstance(item, dict):
+            rentals.append(item)
+
+    count = payload.get("count")
+    if not isinstance(count, int):
+        count = len(rentals)
+
+    return RentalsResponse(rentals=rentals, count=count)
+
+
+def _build_rentals_payload() -> RentalsResponse:
+    client = _monday_client()
+    pm_by_job_number = _build_job_pm_map()
+
+    try:
+        items = client.list_group_items_column_values(
+            board_id=RENTALS_BOARD_ID,
+            group_id=RENTALS_GROUP_ID,
+            column_ids=RENTALS_BULK_COLUMN_IDS,
+            limit=100,
+        )
+    except MondayAPIError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+    rentals_out: List[Dict[str, Any]] = []
+
+    for item in items:
+        item_id = _clean_str(item.get("id"))
+        item_name = _clean_str(item.get("name"))
+        all_cols = item.get("columns") if isinstance(item.get("columns"), dict) else {}
+
+        if not item_id:
+            continue
+
+        timeline_col = all_cols.get(DEBUG_COLUMN_IDS["timeline"])
+        location_col = all_cols.get(DEBUG_COLUMN_IDS["location"])
+        address_lookup_col = all_cols.get(DEBUG_COLUMN_IDS["address_lookup"])
+        job_name_col = all_cols.get(DEBUG_COLUMN_IDS["job_name"])
+        job_number_col = all_cols.get(DEBUG_COLUMN_IDS["job_number"])
+        notes_col = all_cols.get(DEBUG_COLUMN_IDS["notes"])
+        status_col = all_cols.get(DEBUG_COLUMN_IDS["status"])
+        equipment_type_col = all_cols.get(DEBUG_COLUMN_IDS["equipment_type"])
+        size_col = all_cols.get(DEBUG_COLUMN_IDS["size"])
+        company_col = all_cols.get(DEBUG_COLUMN_IDS["company"])
+        company_cell_col = all_cols.get(DEBUG_COLUMN_IDS["company_cell_contact"])
+        drivetrain_col = all_cols.get(DEBUG_COLUMN_IDS["drivetrain"])
+        delivery_time_col = all_cols.get(DEBUG_COLUMN_IDS["delivery_time"])
+        delivery_contact_col = all_cols.get(DEBUG_COLUMN_IDS["delivery_contact"])
+        delivery_cell_col = all_cols.get(DEBUG_COLUMN_IDS["delivery_cell_contact"])
+        budget_col = all_cols.get(DEBUG_COLUMN_IDS["budget"])
+        accessories_col = all_cols.get(DEBUG_COLUMN_IDS["accessories"])
+
+        job_name = _first_linked_item_name(job_name_col)
+        job_number = _display_value(job_number_col)
+        pm = pm_by_job_number.get(job_number, "") if job_number else ""
+
+        rentals_out.append(
+            {
+                "id": item_id,
+                "itemName": item_name,
+                "jobName": job_name,
+                "jobNumber": job_number,
+                "address": _rental_address(address_lookup_col, location_col),
+                "pm": pm,
+                "dateRange": _timeline_range_text(timeline_col),
+                "notes": _extract_long_text(notes_col),
+                "status": _normalize_status(_text_value(status_col)),
+                "equipmentType": _text_value(equipment_type_col),
+                "size": _text_value(size_col),
+                "company": _first_linked_item_name(company_col),
+                "companyCellContact": _display_value(company_cell_col),
+                "drivetrain": _text_value(drivetrain_col),
+                "deliveryTime": _text_value(delivery_time_col),
+                "deliveryContact": _first_linked_item_name(delivery_contact_col),
+                "deliveryCellContact": _display_value(delivery_cell_col),
+                "budget": _text_value(budget_col),
+                "accessories": _text_value(accessories_col),
+            }
+        )
+
+    rentals_out.sort(key=lambda r: ((_clean_str(r.get("dateRange")) or "9999-99-99"), _clean_str(r.get("jobName"))))
+    return RentalsResponse(rentals=rentals_out, count=len(rentals_out))
+
+
+def _refresh_rentals_cache(db: Session) -> RentalsResponse:
+    started = utc_now_iso()
+    mark_cache_refresh_started(db, RENTALS_CACHE_KEY)
+
+    try:
+        response = _build_rentals_payload()
+        upsert_cache_record(
+            db,
+            cache_key=RENTALS_CACHE_KEY,
+            payload=_serialize_rentals_payload(response.rentals),
+            refresh_error=None,
+            refresh_started_at=started,
+            refresh_finished_at=utc_now_iso(),
+        )
+        return response
+    except HTTPException as e:
+        mark_cache_refresh_failed(db, RENTALS_CACHE_KEY, str(e.detail))
+        raise
+    except Exception as e:
+        mark_cache_refresh_failed(db, RENTALS_CACHE_KEY, str(e))
+        raise HTTPException(status_code=502, detail=f"Failed to refresh rentals cache: {e}")
+
+
+def _patch_rentals_cache_after_action(
+    db: Session,
+    *,
+    item_id: str,
+    new_status: str,
+    new_item_name: str,
+) -> None:
+    cached = get_cache_record(db, RENTALS_CACHE_KEY)
+    if cached is None:
+        return
+
+    payload = cached.get("payload")
+    normalized = _deserialize_rentals_payload(payload)
+    changed = False
+
+    for rental in normalized.rentals:
+        if _clean_str(rental.get("id")) != _clean_str(item_id):
+            continue
+        rental["status"] = new_status
+        rental["itemName"] = new_item_name
+        changed = True
+        break
+
+    if not changed:
+        return
+
+    upsert_cache_record(
+        db,
+        cache_key=RENTALS_CACHE_KEY,
+        payload=_serialize_rentals_payload(normalized.rentals),
+        refresh_error=None,
+        refresh_started_at=cached.get("refreshStartedAt"),
+        refresh_finished_at=utc_now_iso(),
+    )
+
+
 @router.get("/debug-list")
 def rentals_debug_list(limit: int = 25, _current_user=Depends(get_current_user)):
     client = _monday_client()
@@ -283,10 +450,10 @@ def rentals_debug_list(limit: int = 25, _current_user=Depends(get_current_user))
         limit = 100
 
     try:
-        items = _query_group_items_basic(
-            client=client,
+        items = client.list_group_items_column_values(
             board_id=RENTALS_BOARD_ID,
             group_id=RENTALS_GROUP_ID,
+            column_ids=RENTALS_BULK_COLUMN_IDS,
             limit=limit,
         )
     except MondayAPIError as e:
@@ -296,7 +463,7 @@ def rentals_debug_list(limit: int = 25, _current_user=Depends(get_current_user))
         "board_id": RENTALS_BOARD_ID,
         "group_id": RENTALS_GROUP_ID,
         "count": len(items),
-        "items": items,
+        "items": [{"id": item.get("id", ""), "name": item.get("name", "")} for item in items],
     }
 
 
@@ -366,7 +533,12 @@ def rentals_debug_item(item_id: str, _current_user=Depends(get_current_user)):
 
 
 @router.post("/{item_id}/action", response_model=RentalActionResponse)
-def rental_action(item_id: str, payload: RentalActionRequest, _current_user=Depends(get_current_user)):
+def rental_action(
+    item_id: str,
+    payload: RentalActionRequest,
+    db: Session = Depends(db_dependency),
+    _current_user=Depends(get_current_user),
+):
     client = _monday_client()
 
     action = _clean_str(payload.action).lower()
@@ -374,24 +546,15 @@ def rental_action(item_id: str, payload: RentalActionRequest, _current_user=Depe
         raise HTTPException(status_code=400, detail="Missing action")
 
     try:
-        basic = client.get_item_basic(item_id)
-    except MondayAPIError as e:
-        raise HTTPException(status_code=502, detail=str(e))
-
-    item_board_id = str(basic.get("board_id") or "").strip()
-    if item_board_id != str(RENTALS_BOARD_ID):
-        raise HTTPException(
-            status_code=400,
-            detail=f"Item is not on rentals board. item_board_id={item_board_id} expected={RENTALS_BOARD_ID}",
+        cols = client.get_item_columns(
+            item_id=item_id,
+            column_ids=RENTALS_ACTION_READ_COLUMN_IDS,
         )
-
-    try:
-        all_cols = client.get_item_all_column_values(item_id=item_id)
     except MondayAPIError as e:
         raise HTTPException(status_code=502, detail=str(e))
 
-    status_col = all_cols.get(DEBUG_COLUMN_IDS["status"])
-    job_name_col = all_cols.get(DEBUG_COLUMN_IDS["job_name"])
+    status_col = cols.get(DEBUG_COLUMN_IDS["status"])
+    job_name_col = cols.get(DEBUG_COLUMN_IDS["job_name"])
 
     current_status_text = _normalize_status(_text_value(status_col))
     current_status_key = _canonical_status(current_status_text)
@@ -420,9 +583,16 @@ def rental_action(item_id: str, payload: RentalActionRequest, _current_user=Depe
         )
 
     linked_job_name = _first_linked_item_name(job_name_col)
-    item_name_before = _clean_str(basic.get("name"))
-    job_name_for_rename = _derive_job_name_for_rename(item_name_before, linked_job_name)
+    cached = get_cache_record(db, RENTALS_CACHE_KEY)
+    cached_payload = _deserialize_rentals_payload(cached.get("payload")) if cached is not None else RentalsResponse(rentals=[], count=0)
 
+    cached_item_name = ""
+    for rental in cached_payload.rentals:
+        if _clean_str(rental.get("id")) == _clean_str(item_id):
+            cached_item_name = _clean_str(rental.get("itemName"))
+            break
+
+    job_name_for_rename = _derive_job_name_for_rename(cached_item_name, linked_job_name)
     if not job_name_for_rename:
         raise HTTPException(
             status_code=400,
@@ -446,6 +616,16 @@ def rental_action(item_id: str, payload: RentalActionRequest, _current_user=Depe
     except MondayAPIError as e:
         raise HTTPException(status_code=502, detail=str(e))
 
+    try:
+        _patch_rentals_cache_after_action(
+            db,
+            item_id=str(item_id),
+            new_status=target_status,
+            new_item_name=new_item_name,
+        )
+    except Exception:
+        pass
+
     return RentalActionResponse(
         ok=True,
         itemId=str(item_id),
@@ -456,84 +636,48 @@ def rental_action(item_id: str, payload: RentalActionRequest, _current_user=Depe
     )
 
 
-@router.get("")
-def list_rentals(_current_user=Depends(get_current_user)):
-    client = _monday_client()
-    pm_by_job_number = _build_job_pm_map()
+@router.get("", response_model=RentalsResponse)
+def list_rentals(
+    db: Session = Depends(db_dependency),
+    _current_user=Depends(get_current_user),
+):
+    cached = get_cache_record(db, RENTALS_CACHE_KEY)
+    if cached is not None:
+        return _deserialize_rentals_payload(cached.get("payload"))
 
-    try:
-        items = _query_group_items_basic(
-            client=client,
-            board_id=RENTALS_BOARD_ID,
-            group_id=RENTALS_GROUP_ID,
-            limit=100,
-        )
-    except MondayAPIError as e:
-        raise HTTPException(status_code=502, detail=str(e))
+    return _refresh_rentals_cache(db)
 
-    rentals_out: List[Dict[str, Any]] = []
 
-    for item in items:
-        item_id = _clean_str(item.get("id"))
-        item_name = _clean_str(item.get("name"))
+@router.post("/refresh", response_model=RentalsResponse)
+def refresh_rentals(
+    db: Session = Depends(db_dependency),
+    _current_user=Depends(get_current_user),
+):
+    return _refresh_rentals_cache(db)
 
-        if not item_id:
-            continue
 
-        try:
-            all_cols = client.get_item_all_column_values(item_id=item_id)
-        except MondayAPIError:
-            all_cols = {}
-
-        timeline_col = all_cols.get(DEBUG_COLUMN_IDS["timeline"])
-        location_col = all_cols.get(DEBUG_COLUMN_IDS["location"])
-        address_lookup_col = all_cols.get(DEBUG_COLUMN_IDS["address_lookup"])
-        job_name_col = all_cols.get(DEBUG_COLUMN_IDS["job_name"])
-        job_number_col = all_cols.get(DEBUG_COLUMN_IDS["job_number"])
-        notes_col = all_cols.get(DEBUG_COLUMN_IDS["notes"])
-        status_col = all_cols.get(DEBUG_COLUMN_IDS["status"])
-        equipment_type_col = all_cols.get(DEBUG_COLUMN_IDS["equipment_type"])
-        size_col = all_cols.get(DEBUG_COLUMN_IDS["size"])
-        company_col = all_cols.get(DEBUG_COLUMN_IDS["company"])
-        company_cell_col = all_cols.get(DEBUG_COLUMN_IDS["company_cell_contact"])
-        drivetrain_col = all_cols.get(DEBUG_COLUMN_IDS["drivetrain"])
-        delivery_time_col = all_cols.get(DEBUG_COLUMN_IDS["delivery_time"])
-        delivery_contact_col = all_cols.get(DEBUG_COLUMN_IDS["delivery_contact"])
-        delivery_cell_col = all_cols.get(DEBUG_COLUMN_IDS["delivery_cell_contact"])
-        budget_col = all_cols.get(DEBUG_COLUMN_IDS["budget"])
-        accessories_col = all_cols.get(DEBUG_COLUMN_IDS["accessories"])
-
-        job_name = _first_linked_item_name(job_name_col)
-        job_number = _display_value(job_number_col)
-        pm = pm_by_job_number.get(job_number, "") if job_number else ""
-
-        rentals_out.append(
-            {
-                "id": item_id,
-                "itemName": item_name,
-                "jobName": job_name,
-                "jobNumber": job_number,
-                "address": _rental_address(address_lookup_col, location_col),
-                "pm": pm,
-                "dateRange": _timeline_range_text(timeline_col),
-                "notes": _extract_long_text(notes_col),
-                "status": _normalize_status(_text_value(status_col)),
-                "equipmentType": _text_value(equipment_type_col),
-                "size": _text_value(size_col),
-                "company": _first_linked_item_name(company_col),
-                "companyCellContact": _display_value(company_cell_col),
-                "drivetrain": _text_value(drivetrain_col),
-                "deliveryTime": _text_value(delivery_time_col),
-                "deliveryContact": _first_linked_item_name(delivery_contact_col),
-                "deliveryCellContact": _display_value(delivery_cell_col),
-                "budget": _text_value(budget_col),
-                "accessories": _text_value(accessories_col),
-            }
+@router.get("/meta", response_model=RentalsCacheMetaResponse)
+def rentals_meta(
+    db: Session = Depends(db_dependency),
+    _current_user=Depends(get_current_user),
+):
+    cached = get_cache_record(db, RENTALS_CACHE_KEY)
+    if cached is None:
+        return RentalsCacheMetaResponse(
+            cacheKey=RENTALS_CACHE_KEY,
+            updatedAt="",
+            refreshStartedAt=None,
+            refreshFinishedAt=None,
+            refreshError=None,
+            count=0,
         )
 
-    rentals_out.sort(key=lambda r: ((_clean_str(r.get("dateRange")) or "9999-99-99"), _clean_str(r.get("jobName"))))
-
-    return {
-        "rentals": rentals_out,
-        "count": len(rentals_out),
-    }
+    payload = _deserialize_rentals_payload(cached.get("payload"))
+    return RentalsCacheMetaResponse(
+        cacheKey=RENTALS_CACHE_KEY,
+        updatedAt=str(cached.get("updatedAt") or ""),
+        refreshStartedAt=cached.get("refreshStartedAt"),
+        refreshFinishedAt=cached.get("refreshFinishedAt"),
+        refreshError=cached.get("refreshError"),
+        count=payload.count,
+    )

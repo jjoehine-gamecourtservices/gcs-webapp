@@ -11,7 +11,9 @@ type Props = {
   selectedRentalId: string;
   actionRentalId: string;
   actionError: string;
+  onBack: () => void;
   onSelectRental: (rentalId: string) => void;
+  onRefresh: () => void;
   onRequestQuote: (rental: RentalListItem) => void;
   onReschedule: (rental: RentalListItem) => void;
   onReserved: (rental: RentalListItem) => void;
@@ -28,7 +30,9 @@ export default function RentalsListSection({
   selectedRentalId,
   actionRentalId,
   actionError,
+  onBack,
   onSelectRental,
+  onRefresh,
   onRequestQuote,
   onReschedule,
   onReserved,
@@ -44,6 +48,7 @@ export default function RentalsListSection({
         display: "flex",
         flexDirection: "column",
         minHeight: 0,
+        height: "100%",
         overflow: "hidden",
         padding: 0,
       }}
@@ -58,17 +63,55 @@ export default function RentalsListSection({
           backdropFilter: "blur(10px)",
           padding: 14,
           borderBottom: "1px solid rgba(255,255,255,0.08)",
+          display: "flex",
+          alignItems: "flex-start",
+          justifyContent: "space-between",
+          gap: 12,
         }}
       >
-        <div>
-          <div className="dashCardTitle">Rentals</div>
-          <div className="dashMuted">All upcoming, active, and completed rentals.</div>
-          {actionError ? (
-            <div style={{ marginTop: 8, color: "rgba(255,160,160,0.95)", fontSize: 12, fontWeight: 700 }}>
-              {actionError}
-            </div>
-          ) : null}
+        <div
+          style={{
+            display: "flex",
+            alignItems: "flex-start",
+            gap: 14,
+          }}
+        >
+          <button
+            type="button"
+            className="dashMiniPill"
+            style={{
+              color: "rgba(255,255,255,0.92)",
+              cursor: "pointer",
+              width: "fit-content",
+              display: "inline-flex",
+              alignItems: "center",
+              flex: "0 0 auto",
+            }}
+            onClick={onBack}
+          >
+            Back
+          </button>
+
+          <div style={{ paddingTop: 2 }}>
+            <div className="dashCardTitle">Rentals</div>
+            <div className="dashMuted">All upcoming, active, and completed rentals.</div>
+            {actionError ? (
+              <div style={{ marginTop: 8, color: "rgba(255,160,160,0.95)", fontSize: 12, fontWeight: 700 }}>
+                {actionError}
+              </div>
+            ) : null}
+          </div>
         </div>
+
+        <button
+          type="button"
+          className="dashMiniPill"
+          style={{ color: "rgba(255,255,255,0.92)", cursor: refreshing ? "default" : "pointer" }}
+          onClick={onRefresh}
+          disabled={refreshing}
+        >
+          Refresh
+        </button>
       </div>
 
       <div
@@ -77,7 +120,8 @@ export default function RentalsListSection({
           gridTemplateColumns: "minmax(0, 2.25fr) minmax(280px, 0.75fr)",
           gap: 0,
           minHeight: 0,
-          flex: 1,
+          flex: "1 1 auto",
+          height: 0,
         }}
       >
         <div
