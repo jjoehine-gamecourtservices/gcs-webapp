@@ -5,11 +5,14 @@ from typing import Any, Dict, List
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
+from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user
+from app.api.jobs import ALL_JOBS_CACHE_KEY
 from app.core.config import settings
-from app.integrations.file_gateway_jobs_client import FileGatewayJobsClient
+from app.db.session import db_dependency
 from app.integrations.monday_client import MondayAPIError, MondayClient
+from app.services.app_cache import get_cache_record
 from app.services.rental_request_options_store import RentalRequestOptionsStore
 
 router = APIRouter()
@@ -216,11 +219,29 @@ def _list_to_options(values: List[str], prefix: str) -> List[SourceOption]:
     return _dedupe_options(out)
 
 
-def _load_jobs(client: MondayClient) -> List[SourceOption]:
-    try:
-        jobs = FileGatewayJobsClient().fetch_all_jobs()
-    except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Failed to load jobs from gateway: {e}")
+def _get_cached_all_jobs(db: Session) -> List[Dict[str, Any]]:
+    cached = get_cache_record(db, ALL_JOBS_CACHE_KEY)
+    if cached is None:
+        return []
+
+    payload = cached.get("payload")
+    if not isinstance(payload, dict):
+        return []
+
+    raw_jobs = payload.get("jobs")
+    if not isinstance(raw_jobs, list):
+        return []
+
+    out: List[Dict[str, Any]] = []
+    for item in raw_jobs:
+        if isinstance(item, dict):
+            out.append(item)
+
+    return out
+
+
+def _load_jobs(*, client: MondayClient, db: Session) -> List[SourceOption]:
+    jobs = _get_cached_all_jobs(db)
 
     try:
         monday_job_items = client.list_board_items_basic(board_id=JOBS_BOARD_ID, limit=500)
@@ -328,12 +349,15 @@ def _load_companies(client: MondayClient) -> List[SourceOption]:
 
 
 @router.get("", response_model=RentalRequestSourcesResponse)
-def rental_request_sources(_current_user=Depends(get_current_user)):
+def rental_request_sources(
+    db: Session = Depends(db_dependency),
+    _current_user=Depends(get_current_user),
+):
     client = _monday_client()
     store = RentalRequestOptionsStore()
 
     return RentalRequestSourcesResponse(
-        jobs=_load_jobs(client),
+        jobs=_load_jobs(client=client, db=db),
         people=_load_people(client),
         deliveryOptions=_list_to_options(DELIVERY_OPTIONS, "delivery"),
         equipmentTypes=_list_to_options(store.list_equipment_types(), "equipment"),

@@ -1,3 +1,4 @@
+# backend/app/api/monday.py
 from __future__ import annotations
 
 import re
@@ -9,6 +10,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user
+from app.api.upcoming_planning import _refresh_upcoming_planning_cache
 from app.core.config import settings
 from app.db.session import db_dependency
 from app.integrations.file_gateway_jobs_client import FileGatewayJobsClient
@@ -371,6 +373,12 @@ def _refresh_upcoming_jobs_cache(db: Session) -> UpcomingJobsResponse:
             refresh_started_at=started,
             refresh_finished_at=utc_now_iso(),
         )
+
+        try:
+            _refresh_upcoming_planning_cache(db)
+        except Exception:
+            pass
+
         return response
     except HTTPException as e:
         mark_cache_refresh_failed(db, UPCOMING_JOBS_CACHE_KEY, str(e.detail))

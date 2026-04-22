@@ -1,3 +1,4 @@
+// frontend/src/layout/AuthedShell.tsx
 import React, { useEffect, useMemo, useState, useCallback } from "react";
 import type { User } from "../types/user";
 import Header from "./header/Header";
@@ -57,7 +58,10 @@ function isKeyAllowed(allowed: NavKey[], key: NavKey): boolean {
   return allowed.includes(key);
 }
 
-type JobsRoute = { page: "all" } | { page: "overview"; jobId: string };
+type JobsRoute =
+  | { page: "all" }
+  | { page: "overview"; jobId: string }
+  | { page: "upcoming-planning" };
 
 export default function AuthedShell({ user, onLogout }: Props) {
   const allowedKeys = useMemo(() => computeAllowedModules(user), [user]);
@@ -88,6 +92,15 @@ export default function AuthedShell({ user, onLogout }: Props) {
     setActive("jobs");
   }, []);
 
+  const openUpcomingPlanning = useCallback(() => {
+    setJobsRoute({ page: "upcoming-planning" });
+    setActive("jobs");
+  }, []);
+
+  const openDashboard = useCallback(() => {
+    setActive("dashboard");
+  }, []);
+
   const onSelectModule = useCallback(
     (key: NavKey) => {
       if (key === active) {
@@ -116,7 +129,7 @@ export default function AuthedShell({ user, onLogout }: Props) {
 
   const content = useMemo(() => {
     const fallback = (
-      <DashboardPage user={user} onViewAllJobs={openJobsAll} onOpenJobOverview={openJobOverview} />
+      <DashboardPage user={user} onViewAllJobs={openUpcomingPlanning} onOpenJobOverview={openJobOverview} />
     );
 
     if (!isKeyAllowed(allowedKeys, active)) return fallback;
@@ -130,7 +143,13 @@ export default function AuthedShell({ user, onLogout }: Props) {
         return <AdminPage userIsMaster={user.is_master} perms={permsSet} />;
 
       case "jobs":
-        return <JobsPage route={jobsRoute} onOpenAll={openJobsAll} onOpenOverview={openJobOverview} />;
+        return (
+          <JobsPage
+            route={jobsRoute}
+            onOpenAll={openDashboard}
+            onOpenOverview={openJobOverview}
+          />
+        );
 
       case "tasks":
         return <TasksPage perms={permsSet} />;
@@ -138,7 +157,7 @@ export default function AuthedShell({ user, onLogout }: Props) {
       default:
         return fallback;
     }
-  }, [active, allowedKeys, user, jobsRoute, openJobsAll, openJobOverview, permsSet]);
+  }, [active, allowedKeys, user, jobsRoute, openUpcomingPlanning, openJobOverview, openDashboard, permsSet]);
 
   return (
     <div className="dashRoot" aria-label="Dashboard Shell">

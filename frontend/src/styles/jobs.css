@@ -1,3 +1,4 @@
+/* frontend/src/styles/jobs.css */
 .jobsPageRoot {
   display: flex;
   flex-direction: column;
@@ -259,4 +260,146 @@
 .jobsFilterFooterText {
   font-size: 12px;
   color: rgba(255,255,255,0.72);
+}
+
+.upcomingPlanningShell .jobsListStack {
+  gap: 12px;
+}
+
+.upcomingPlanningCard {
+  padding: 14px;
+}
+
+.upcomingPlanningHeader {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: start;
+  color: rgba(255,255,255,0.92);
+}
+
+.upcomingPlanningHeaderLeft {
+  min-width: 0;
+}
+
+.upcomingPlanningHeaderRight {
+  display: flex;
+  justify-content: flex-end;
+  align-items: flex-start;
+}
+
+.upcomingPlanningTitle {
+  font-weight: 950;
+  font-size: 14px;
+  margin-bottom: 4px;
+}
+
+.upcomingPlanningAddress {
+  font-size: 12px;
+  opacity: 0.85;
+}
+
+.upcomingPlanningMonthsPill {
+  font-size: 12px;
+  white-space: nowrap;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,0.16);
+  background: rgba(0,0,0,0.18);
+  color: rgba(255,255,255,0.92);
+}
+
+.upcomingPlanningDivider {
+  margin-top: 12px;
+  border-top: 1px solid rgba(255,255,255,0.10);
+}
+
+.upcomingPlanningBody {
+  margin-top: 12px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: start;
+}
+
+.upcomingPlanningDetails {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  align-items: start;
+}
+
+.upcomingPlanningCol {
+  display: grid;
+  gap: 10px;
+  align-content: start;
+}
+
+.upcomingPlanningLine {
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+  color: rgba(255,255,255,0.92);
+}
+
+.upcomingPlanningLabel {
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+.upcomingPlanningValue {
+  min-width: 0;
+  word-break: break-word;
+}
+
+.upcomingPlanningNoteCol {
+  display: flex;
+  justify-content: flex-end;
+  align-items: flex-start;
+}
+
+.upcomingPlanningNoteBtn {
+  width: 34px;
+  height: 34px;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,0.14);
+  background: rgba(0,0,0,0.18);
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  color: rgba(255,255,255,0.92);
+  flex: 0 0 auto;
+}
+
+.upcomingPlanningNoteBtn:hover {
+  background: rgba(255,255,255,0.08);
+  box-shadow: 0 0 0 3px rgba(120, 160, 255, 0.12);
+}
+
+.upcomingPlanningNoteIcon {
+  display: block;
+  line-height: 1;
+  font-size: 16px;
+}
+
+@media (max-width: 900px) {
+  .upcomingPlanningHeader {
+    grid-template-columns: 1fr;
+  }
+
+  .upcomingPlanningHeaderRight {
+    justify-content: flex-start;
+  }
+
+  .upcomingPlanningBody {
+    grid-template-columns: 1fr;
+  }
+
+  .upcomingPlanningDetails {
+    grid-template-columns: 1fr;
+  }
+
+  .upcomingPlanningNoteCol {
+    justify-content: flex-start;
+  }
 }

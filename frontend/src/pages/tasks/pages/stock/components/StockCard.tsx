@@ -1,3 +1,4 @@
+// frontend/src/pages/tasks/stock/components/StockCard.tsx
 import React from "react";
 
 type Props = {

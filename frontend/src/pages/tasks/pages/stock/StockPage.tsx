@@ -1,3 +1,4 @@
+// frontend/src/pages/tasks/stock/StockPage.tsx
 import React, { useMemo, useState } from "react";
 import TileGrid from "../../../../components/tiles/TileGrid";
 import StockListPage from "./pages/stock/StockListPage";
@@ -60,7 +61,7 @@ export default function StockPage() {
   }, []);
 
   if (view.id === "stock-list") {
-    return <StockListPage />;
+    return <StockListPage onBack={() => setView({ id: "home" })} />;
   }
 
   if (view.id === "order-stock") {

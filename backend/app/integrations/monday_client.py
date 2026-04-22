@@ -1,3 +1,4 @@
+# backend/app/integrations/monday_client.py
 from __future__ import annotations
 
 import json
@@ -75,6 +76,40 @@ class MondayClient:
             raise MondayAPIError(f"Monday GraphQL error: {data['errors']}")
 
         return data.get("data") or {}
+
+    def list_board_groups(
+        self,
+        *,
+        board_id: int,
+    ) -> List[Dict[str, str]]:
+        query = f"""
+        query {{
+          boards(ids: {int(board_id)}) {{
+            groups {{
+              id
+              title
+            }}
+          }}
+        }}
+        """
+
+        data = self._post_graphql(query)
+
+        boards = data.get("boards") or []
+        if not boards:
+            return []
+
+        groups = (boards[0] or {}).get("groups") or []
+        out: List[Dict[str, str]] = []
+
+        for grp in groups:
+            group_id = str(grp.get("id") or "").strip()
+            title = str(grp.get("title") or "").strip()
+            if not group_id:
+                continue
+            out.append({"id": group_id, "title": title})
+
+        return out
 
     def list_board_jobs_basic(
         self,
@@ -254,6 +289,102 @@ class MondayClient:
 
         return out
 
+    def list_group_items_text_column_values(
+        self,
+        *,
+        board_id: int,
+        group_id: str,
+        column_ids: List[str],
+        limit: int = 500,
+    ) -> List[Dict[str, Any]]:
+        ids = [c.strip() for c in column_ids if c.strip()]
+        ids_json = json.dumps(ids)
+        group_json = json.dumps(str(group_id).strip())
+
+        query = f"""
+        query {{
+          boards(ids: {int(board_id)}) {{
+            groups(ids: [{group_json}]) {{
+              id
+              title
+              items_page(limit: {int(limit)}) {{
+                items {{
+                  id
+                  name
+                  column_values(ids: {ids_json}) {{
+                    id
+                    type
+                    text
+                    value
+
+                    ... on BoardRelationValue {{
+                      display_value
+                    }}
+
+                    ... on MirrorValue {{
+                      display_value
+                    }}
+
+                    ... on FormulaValue {{
+                      display_value
+                    }}
+                  }}
+                }}
+              }}
+            }}
+          }}
+        }}
+        """
+
+        data = self._post_graphql(query)
+
+        boards = data.get("boards") or []
+        if not boards:
+            return []
+
+        groups = (boards[0] or {}).get("groups") or []
+        if not groups:
+            return []
+
+        items_page = (groups[0] or {}).get("items_page") or {}
+        items = items_page.get("items") or []
+
+        out: List[Dict[str, Any]] = []
+
+        for it in items:
+            item_id = str(it.get("id") or "").strip()
+            name = str(it.get("name") or "").strip()
+            if not item_id:
+                continue
+
+            cols_out: Dict[str, Dict[str, Any]] = {}
+            for c in it.get("column_values") or []:
+                cid = str(c.get("id") or "").strip()
+                if not cid:
+                    continue
+
+                entry: Dict[str, Any] = {
+                    "id": cid,
+                    "type": c.get("type") or "",
+                    "text": str(c.get("text") or ""),
+                    "value": str(c.get("value") or ""),
+                }
+
+                if "display_value" in c:
+                    entry["display_value"] = str(c.get("display_value") or "")
+
+                cols_out[cid] = entry
+
+            out.append(
+                {
+                    "id": item_id,
+                    "name": name,
+                    "columns": cols_out,
+                }
+            )
+
+        return out
+
     def list_group_items_column_values(
         self,
         *,
@@ -289,6 +420,7 @@ class MondayClient:
                         name
                         board {{ id }}
                       }}
+                      display_value
                     }}
 
                     ... on MirrorValue {{
@@ -417,6 +549,7 @@ class MondayClient:
                   name
                   board {{ id }}
                 }}
+                display_value
               }}
 
               ... on MirrorValue {{
@@ -481,6 +614,7 @@ class MondayClient:
                   name
                   board {{ id }}
                 }}
+                display_value
               }}
 
               ... on MirrorValue {{

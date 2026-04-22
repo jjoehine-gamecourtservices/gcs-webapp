@@ -1,3 +1,4 @@
+# backend/app/main.py
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -9,6 +10,8 @@ from app.api.monday_master_json import router as monday_master_json_router
 from app.api.rental_request_sources import router as rental_request_sources_router
 from app.api.rental_requests import router as rental_requests_router
 from app.api.rentals import router as rentals_router
+from app.api.stock import router as stock_router
+from app.api.upcoming_planning import router as upcoming_planning_router
 from app.api.user_permissions import router as user_permissions_router
 from app.api.users import router as users_router
 from app.core.config import settings
@@ -53,6 +56,8 @@ def create_app() -> FastAPI:
     app.include_router(rentals_router, prefix="/api/rentals", tags=["rentals"])
     app.include_router(rental_request_sources_router, prefix="/api/rental-request-sources", tags=["rental-request-sources"])
     app.include_router(rental_requests_router, prefix="/api/rental-requests", tags=["rental-requests"])
+    app.include_router(stock_router, prefix="/api/stock", tags=["stock"])
+    app.include_router(upcoming_planning_router, prefix="/api/upcoming-planning", tags=["upcoming-planning"])
 
     return app
 

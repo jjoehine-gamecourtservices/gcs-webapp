@@ -1,3 +1,4 @@
+// frontend/src/pages/jobs/jobs.types.ts
 export type JobCardModel = {
   id: string;
   jobName: string;
@@ -36,4 +37,29 @@ export type MondayUpcomingJob = {
 
 export type MondayUpcomingJobsResponse = {
   jobs: MondayUpcomingJob[];
+};
+
+export type UpcomingPlanningJob = {
+  itemId: string;
+  itemName: string;
+  months: string[];
+  jobNumber?: string | null;
+  address?: string | null;
+  gc?: string | null;
+  pm?: string | null;
+  super?: string | null;
+  superCell?: string | null;
+  gcpm?: string | null;
+  gcpmCell?: string | null;
+  hasNote: boolean;
+};
+
+export type UpcomingPlanningJobsResponse = {
+  jobs: UpcomingPlanningJob[];
+};
+
+export type UpcomingPlanningNote = {
+  itemId: string;
+  noteText: string;
+  updatedAt?: string | null;
 };

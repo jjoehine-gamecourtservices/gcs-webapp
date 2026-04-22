@@ -1,3 +1,4 @@
+# backend/app/models/_all_models.py
 """Import all SQLAlchemy models for side effects.
 
 This module exists so that:
@@ -19,3 +20,10 @@ from app.models.associations import RolePermission, UserRole  # noqa: F401
 
 # User job preferences (recent + pinned)
 from app.models.user_job_prefs import UserJobPrefs  # noqa: F401
+
+# Stock
+from app.models.stock_item import StockItem  # noqa: F401
+from app.models.stock_item_vendor import StockItemVendor  # noqa: F401
+
+# Upcoming planning notes
+from app.models.upcoming_planning_note import UpcomingPlanningNote  # noqa: F401
