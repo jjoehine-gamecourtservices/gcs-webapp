@@ -10,7 +10,6 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_current_user
 from app.core.config import settings
 from app.db.session import db_dependency
-from app.integrations.file_gateway_jobs_client import FileGatewayJobsClient
 from app.integrations.monday_client import MondayAPIError, MondayClient
 from app.services.app_cache import (
     get_cache_record,
@@ -19,6 +18,7 @@ from app.services.app_cache import (
     upsert_cache_record,
     utc_now_iso,
 )
+from app.storage.job_store import JobStore
 
 router = APIRouter()
 
@@ -248,7 +248,7 @@ def _canonical_status(text: str) -> str:
 
 def _build_job_pm_map() -> Dict[str, str]:
     try:
-        jobs = FileGatewayJobsClient().fetch_all_jobs()
+        jobs = JobStore().fetch_all_jobs()
     except Exception:
         return {}
 

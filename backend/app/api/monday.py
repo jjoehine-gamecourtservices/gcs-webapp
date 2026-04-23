@@ -1,4 +1,3 @@
-# backend/app/api/monday.py
 from __future__ import annotations
 
 import re
@@ -13,7 +12,6 @@ from app.api.deps import get_current_user
 from app.api.upcoming_planning import _refresh_upcoming_planning_cache
 from app.core.config import settings
 from app.db.session import db_dependency
-from app.integrations.file_gateway_jobs_client import FileGatewayJobsClient
 from app.integrations.monday_client import MondayAPIError, MondayClient
 from app.services.app_cache import (
     get_cache_record,
@@ -23,6 +21,7 @@ from app.services.app_cache import (
     utc_now_iso,
 )
 from app.services.rental_quote_vendors import list_rental_quote_vendors
+from app.storage.job_store import JobStore
 
 router = APIRouter()
 
@@ -248,7 +247,7 @@ def _build_all_jobs_map_from_payload(payload: Any) -> Dict[str, Dict[str, Any]]:
     return out
 
 
-def _build_gateway_job_map_from_all_jobs_cache(db: Session) -> Dict[str, Dict[str, Any]]:
+def _build_job_map_from_all_jobs_cache(db: Session) -> Dict[str, Dict[str, Any]]:
     cached = get_cache_record(db, ALL_JOBS_CACHE_KEY)
     if cached is None:
         return {}
@@ -256,13 +255,13 @@ def _build_gateway_job_map_from_all_jobs_cache(db: Session) -> Dict[str, Dict[st
     return _build_all_jobs_map_from_payload(cached.get("payload"))
 
 
-def _build_gateway_job_map_with_fallback(db: Session) -> Dict[str, Dict[str, Any]]:
-    cached_map = _build_gateway_job_map_from_all_jobs_cache(db)
+def _build_job_map_with_fallback(db: Session) -> Dict[str, Dict[str, Any]]:
+    cached_map = _build_job_map_from_all_jobs_cache(db)
     if cached_map:
         return cached_map
 
     try:
-        return FileGatewayJobsClient().fetch_all_jobs_map()
+        return JobStore().fetch_all_jobs_map()
     except Exception:
         return {}
 
@@ -289,7 +288,7 @@ def _build_upcoming_jobs_payload(db: Session, client: MondayClient) -> UpcomingJ
     except MondayAPIError as e:
         raise HTTPException(status_code=502, detail=str(e))
 
-    gateway_jobs_by_number = _build_gateway_job_map_with_fallback(db)
+    jobs_by_number = _build_job_map_with_fallback(db)
     jobs_out: List[UpcomingJob] = []
 
     for item in items:
@@ -318,11 +317,11 @@ def _build_upcoming_jobs_payload(db: Session, client: MondayClient) -> UpcomingJ
         if not job_number:
             continue
 
-        gateway_job = gateway_jobs_by_number.get(job_number)
-        if not gateway_job:
+        job_data = jobs_by_number.get(job_number)
+        if not job_data:
             continue
 
-        card_job_name = _clean_str(gateway_job.get("jobName")) or parse_job_name_right_of_at(item_name)
+        card_job_name = _clean_str(job_data.get("jobName")) or parse_job_name_right_of_at(item_name)
         if not card_job_name:
             continue
 
@@ -334,13 +333,13 @@ def _build_upcoming_jobs_payload(db: Session, client: MondayClient) -> UpcomingJ
                 id=_clean_str(item.id),
                 jobName=card_job_name,
                 jobNumber=job_number,
-                address=_clean_str(gateway_job.get("address")) or None,
-                generalContractor=_clean_str(gateway_job.get("generalContractor")) or None,
-                gcpm=_clean_str(gateway_job.get("gcpm")) or None,
-                gcpmContact=_clean_str(gateway_job.get("gcpmContact")) or None,
-                super=_clean_str(gateway_job.get("super")) or None,
-                superContact=_clean_str(gateway_job.get("superContact")) or None,
-                pm=_clean_str(gateway_job.get("pm")) or None,
+                address=_clean_str(job_data.get("address")) or None,
+                generalContractor=_clean_str(job_data.get("generalContractor")) or None,
+                gcpm=_clean_str(job_data.get("gcpm")) or None,
+                gcpmContact=_clean_str(job_data.get("gcpmContact")) or None,
+                super=_clean_str(job_data.get("super")) or None,
+                superContact=_clean_str(job_data.get("superContact")) or None,
+                pm=_clean_str(job_data.get("pm")) or None,
                 installer=installer_names,
                 installerContact=installer_contact,
                 startDate=start_d.isoformat(),

@@ -1,6 +1,9 @@
 services:
   api:
-    image: gamecourt/gcs-api:${GCS_VERSION:?GCS_VERSION is required}
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    image: gcs-api-local
     restart: unless-stopped
     env_file:
       - ./.env.prod
@@ -8,9 +11,8 @@ services:
       - "8000"
     volumes:
       - api_data:/data
-      - "//srv12r2-dc-adfs/gcsdocuments/ALL JOBS JSON/jobs:/mnt/all_jobs_json/jobs"
+      - /srv/gcs/shares:/mnt/shares
     healthcheck:
-      # api image has Python; stdlib HTTP probe. No host-shell quoting involved.
       test:
         [
           "CMD",
@@ -24,12 +26,14 @@ services:
       start_period: 15s
 
   web:
-    image: gamecourt/gcs-web:${GCS_VERSION:?GCS_VERSION is required}
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
+    image: gcs-web-local
     restart: unless-stopped
     expose:
       - "80"
     healthcheck:
-      # Deterministic: curl exists in the web image (verified).
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1/"]
       interval: 10s
       timeout: 3s
@@ -52,7 +56,6 @@ services:
       web:
         condition: service_healthy
     healthcheck:
-      # Deterministic: curl exists in caddy image (verified). Probe local admin API.
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:2019/config/"]
       interval: 10s
       timeout: 3s

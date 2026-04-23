@@ -9,7 +9,6 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_current_user
 from app.api.monday_master_json import _sync_master_json_internal
 from app.db.session import db_dependency
-from app.integrations.file_gateway_jobs_client import FileGatewayJobsClient
 from app.services.app_cache import (
     get_cache_record,
     mark_cache_refresh_failed,
@@ -17,6 +16,7 @@ from app.services.app_cache import (
     upsert_cache_record,
     utc_now_iso,
 )
+from app.storage.job_store import JobStore
 
 router = APIRouter()
 
@@ -66,7 +66,7 @@ def _deserialize_jobs_payload(payload: Any) -> AllJobsResponse:
 
 def _build_all_jobs_payload() -> AllJobsResponse:
     try:
-        jobs = FileGatewayJobsClient().fetch_all_jobs()
+        jobs = JobStore().fetch_all_jobs()
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Failed to load all jobs: {e}")
 
@@ -78,7 +78,7 @@ def _build_all_jobs_payload() -> AllJobsResponse:
     return AllJobsResponse(jobs=normalized, count=len(normalized))
 
 
-def _refresh_all_jobs_cache_from_gateway(db: Session) -> AllJobsResponse:
+def _refresh_all_jobs_cache(db: Session) -> AllJobsResponse:
     started = utc_now_iso()
     mark_cache_refresh_started(db, ALL_JOBS_CACHE_KEY)
 
@@ -111,7 +111,7 @@ def _refresh_all_jobs_pipeline(db: Session, *, sync_limit: int = 500) -> AllJobs
         mark_cache_refresh_failed(db, ALL_JOBS_CACHE_KEY, f"Master JSON sync failed: {e}")
         raise HTTPException(status_code=502, detail=f"Master JSON sync failed: {e}")
 
-    return _refresh_all_jobs_cache_from_gateway(db)
+    return _refresh_all_jobs_cache(db)
 
 
 @router.get("", response_model=AllJobsResponse)
